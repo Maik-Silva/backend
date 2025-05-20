@@ -19,6 +19,9 @@ RUN chmod +x node_modules/.bin/prisma
 # Gerando o Prisma Client
 RUN npx prisma generate
 
+# Rodando as migrações do Prisma durante a construção
+RUN npx prisma migrate deploy
+
 # Expondo a porta (ajuste conforme necessário)
 EXPOSE 5000
 
