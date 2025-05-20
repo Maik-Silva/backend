@@ -5,6 +5,9 @@ const { PrismaClient } = require('@prisma/client');
 const app = express();
 const prisma = new PrismaClient();
 
+// Adicionando log para verificar a variável DATABASE_URL
+console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
 app.use(express.json());
 app.use(cors());
 
