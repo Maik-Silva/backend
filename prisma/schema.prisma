@@ -7,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model gorduras {
   Alimento       String? @db.Text
   Quantidade__g_ Int?    @map("Quantidade (g)")
@@ -45,8 +44,6 @@ model Alimentos {
   Energia__Kcal_ Int    @map("Energia (Kcal)")
 }
 
-
-
 model frutas {
   Alimento       String? @db.Text
   Quantidade__g_ Int?    @map("Quantidade (g)")
@@ -80,47 +77,34 @@ model verduras__hortali_as_e_derivados {
 }
 
 model nutricionistas {
-  id             Int      @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
+  nome          String
+  email         String   @unique
+  senha_hash    String
+  crn           String?
+  especialidade String?
+  whatsapp      String?
+  instagram     String?
+  logo_url      String?  @db.Text
+  plano         String   @default("free")
+  ativo         Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
-  nome           String
-  email          String   @unique
-  senha_hash     String
-
-  crn            String?
-  especialidade  String?
-
-  whatsapp       String?
-  instagram      String?
-
-  logo_url       String?  @db.Text
-
-  plano          String   @default("free")
-  ativo          Boolean  @default(true)
-
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-
-  pacientes      pacientes[]
+  pacientes     pacientes[]
 }
 
 model pacientes {
-  id                  Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
+  nutricionista_id Int
+  nome             String
+  email            String?
+  telefone         String?
+  data_nascimento  DateTime?
+  observacoes      String?   @db.Text
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
 
-  nutricionista_id    Int
-
-  nome                String
-  email               String?
-  telefone            String?
-
-  data_nascimento     DateTime?
-
-  observacoes         String?  @db.Text
-
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
-
-  nutricionista nutricionistas @relation(
-    fields: [nutricionista_id],
-    references: [id]
-  )
+  // Linha corrigida aqui:
+  nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
 }
