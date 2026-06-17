@@ -105,10 +105,5 @@ model pacientes {
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
 
-  // Linha corrigida aqui:
   nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 81c13e99c34b485efaa8a0e13035b40638ea65d6
