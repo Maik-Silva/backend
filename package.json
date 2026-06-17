@@ -7,10 +7,12 @@
     "build": "chmod +x ./node_modules/.bin/prisma && npx prisma generate && npx prisma migrate deploy"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "@prisma/client": "^6.5.0",
-    "prisma": "^6.5.0",
-    "dotenv": "^16.3.1"
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.3",
+    "prisma": "^6.5.0"
   }
 }
