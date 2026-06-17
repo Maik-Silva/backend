@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model gorduras {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model leguminosas {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model leite_e_derivados {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+
+  @@map("leite e derivados")
+}
+
+model proteina {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model Alimentos {
+  id             Int    @id @default(autoincrement())
+  Alimento       String
+  Quantidade__g_ Int    @map("Quantidade (g)")
+  Energia__Kcal_ Int    @map("Energia (Kcal)")
+}
+
+model frutas {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model sementes {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model cereais_e_tuberculos {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+
+  @@map("cereais e tuberculos")
+}
+
+model verduras__hortali_as_e_derivados {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+
+  @@map("verduras, hortaliças e derivados")
+}
+
+model nutricionistas {
+  id            Int      @id @default(autoincrement())
+  nome          String
+  email         String   @unique
+  senha_hash    String
+  crn           String?
+  especialidade String?
+  whatsapp      String?
+  instagram     String?
+  logo_url      String?  @db.Text
+  plano         String   @default("free")
+  ativo         Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  pacientes     pacientes[]
+}
+
+model pacientes {
+  id               Int       @id @default(autoincrement())
+  nutricionista_id Int
+  nome             String
+  email            String?
+  telefone         String?
+  data_nascimento  DateTime?
+  observacoes      String?   @db.Text
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  // Linha corrigida aqui:
+  nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
+}
