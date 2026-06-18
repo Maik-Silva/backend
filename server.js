@@ -5,6 +5,9 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { PrismaClient } = require("@prisma/client");
+const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const app = express();
 const prisma = new PrismaClient();
@@ -14,6 +17,27 @@ app.use(express.json());
 
 // Chave secreta para criptografia do Token JWT
 const JWT_SECRET = process.env.JWT_SECRET || "chave_secreta_padrao_equivale_saas";
+
+// ==========================================
+//       CONFIGURAÇÃO DO CLOUDINARY
+// ==========================================
+cloudinary.config({
+  cloud_name: "dpop2y72p",
+  api_key: "747585153614338",
+  api_secret: "6Ogf8L7dPumZmjAHA2cxW3-fd7k"
+});
+
+// Configurando o Multer para mandar o arquivo direto para o Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "equivale_logos", // Nome da pasta que será criada no seu Cloudinary
+    allowed_formats: ["jpg", "png", "jpeg"],
+    transformation: [{ width: 500, height: 500, crop: "limit" }] // Redimensiona para não ocupar espaço à toa
+  },
+});
+
+const upload = multer({ storage: storage });
 
 const tabelas = [
   "cereais_e_tuberculos",
@@ -28,44 +52,35 @@ const tabelas = [
 
 // Rota raiz para teste simples
 app.get("/", (req, res) => {
-  res.send("Backend online 🚀");
+  res.send("Backend online com Upload de Imagens! 🚀");
 });
 
 // ==========================================
 //          ROTAS DE AUTENTICAÇÃO
 // ==========================================
 
-// 1. Rota para Registrar um Novo Nutricionista (Com validação de cupom/chave)
+// 1. Rota para Registrar um Novo Nutricionista
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { nome, email, senha, crn, chaveAcesso } = req.body;
-
-    // Validação da Chave de Convite Beta
     const CHAVE_VALIDA = process.env.CHAVE_CONVITE || "BETA100EQUIVALE";
 
     if (!chaveAcesso || chaveAcesso.trim() !== CHAVE_VALIDA) {
       return res.status(403).json({ error: "Chave de convite inválida ou expirada." });
     }
 
-    // Validação de campos obrigatórios gerais
     if (!nome || !email || !senha) {
       return res.status(400).json({ error: "Nome, e-mail e senha são obrigatórios." });
     }
 
-    // Verifica se o e-mail já existe na tabela de nutricionistas
-    const usuarioExiste = await prisma.nutricionistas.findUnique({
-      where: { email },
-    });
-
+    const usuarioExiste = await prisma.nutricionistas.findUnique({ where: { email } });
     if (usuarioExiste) {
       return res.status(400).json({ error: "Este e-mail já está cadastrado." });
     }
 
-    // Criptografa a senha
     const salt = await bcrypt.genSalt(10);
     const senha_hash = await bcrypt.hash(senha, salt);
 
-    // Cria o nutricionista no MySQL
     const novoNutri = await prisma.nutricionistas.create({
       data: {
         nome,
@@ -77,10 +92,7 @@ app.post("/api/auth/register", async (req, res) => {
       },
     });
 
-    res.status(201).json({
-      message: "Nutricionista cadastrado com sucesso!",
-      id: novoNutri.id,
-    });
+    res.status(201).json({ message: "Nutricionista cadastrado com sucesso!", id: novoNutri.id });
   } catch (error) {
     console.error("Erro no registro:", error);
     res.status(500).json({ error: "Erro interno ao cadastrar nutricionista." });
@@ -97,34 +109,26 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
     }
 
-    // Busca o nutricionista pelo e-mail
-    const nutri = await prisma.nutricionistas.findUnique({
-      where: { email },
-    });
-
+    const nutri = await prisma.nutricionistas.findUnique({ where: { email } });
     if (!nutri) {
       return res.status(400).json({ error: "Credenciais inválidas." });
     }
 
-    // Compara a senha digitada com o hash salvo no banco
     const senhaCorreta = await bcrypt.compare(senhaFinal, nutri.senha_hash);
     if (!senhaCorreta) {
       return res.status(400).json({ error: "Credenciais inválidas." });
     }
 
-    // Verifica se a conta está ativa
     if (!nutri.ativo) {
       return res.status(403).json({ error: "Sua conta está inativa. Contate o suporte." });
     }
 
-    // Gera o token JWT válido por 7 dias
     const token = jwt.sign(
       { id: nutri.id, email: nutri.email },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Retorna o token e os dados públicos do nutricionista para o Front-end
     res.json({
       token,
       nutricionista: {
@@ -147,7 +151,7 @@ app.post("/api/auth/login", async (req, res) => {
 
 function verificarToken(req, res, next) {
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Pega o token após o "Bearer "
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
     return res.status(401).json({ error: "Acesso negado. Faça login para continuar." });
@@ -155,7 +159,7 @@ function verificarToken(req, res, next) {
 
   try {
     const verificado = jwt.verify(token, JWT_SECRET);
-    req.nutri = verificado; // Guarda { id, email } dentro da requisição
+    req.nutri = verificado;
     next();
   } catch (error) {
     return res.status(403).json({ error: "Sessão expirada ou token inválido. Faça login novamente." });
@@ -163,14 +167,31 @@ function verificarToken(req, res, next) {
 }
 
 // ==========================================
+//       ROTA EXCLUSIVA DE UPLOAD DE LOGO
+// ==========================================
+
+// O Multer intercepta o arquivo enviado pelo front, manda pro Cloudinary e nos dá a URL pronta
+app.post("/api/nutri/upload-logo", verificarToken, upload.single("logo"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhum arquivo de imagem foi enviado." });
+    }
+    // Retorna a URL segura gerada pelo Cloudinary para o Frontend usar
+    res.json({ logo_url: req.file.path });
+  } catch (error) {
+    console.error("Erro no upload:", error);
+    res.status(500).json({ error: "Erro interno ao processar upload da logo." });
+  }
+});
+
+// ==========================================
 //        ROTAS DE GESTÃO DE PACIENTES
 // ==========================================
 
-// 1. Cadastrar um novo paciente (Apenas para o Nutri logado)
 app.post("/api/pacientes", verificarToken, async (req, res) => {
   try {
     const { nome, email, telefone, data_nascimento, observacoes } = req.body;
-    const nutricionista_id = req.nutri.id; // ID pego automaticamente do Token
+    const nutricionista_id = req.nutri.id;
 
     if (!nome) {
       return res.status(400).json({ error: "O nome do paciente é obrigatório." });
@@ -194,16 +215,13 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
   }
 });
 
-// 2. Listar apenas os pacientes do Nutri logado
 app.get("/api/pacientes", verificarToken, async (req, res) => {
   try {
     const nutricionista_id = req.nutri.id;
-
     const listaPacientes = await prisma.pacientes.findMany({
       where: { nutricionista_id },
       orderBy: { nome: "asc" },
     });
-
     res.json(listaPacientes);
   } catch (error) {
     console.error("Erro ao buscar pacientes:", error);
@@ -215,7 +233,6 @@ app.get("/api/pacientes", verificarToken, async (req, res) => {
 //      ROTAS DE PERSONALIZAÇÃO DO PERFIL
 // ==========================================
 
-// 3. Salvar/Atualizar os dados de personalização do Nutricionista
 app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
   try {
     const nutricionista_id = req.nutri.id;
@@ -250,11 +267,9 @@ app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
   }
 });
 
-// 4. Buscar os dados atuais do perfil do Nutricionista
 app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
   try {
     const nutricionista_id = req.nutri.id;
-
     const nutri = await prisma.nutricionistas.findUnique({
       where: { id: nutricionista_id },
       select: {
@@ -269,7 +284,6 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
         plano: true,
       },
     });
-
     res.json(nutri);
   } catch (error) {
     console.error("Erro ao buscar perfil:", error);
@@ -281,63 +295,40 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
 //          ROTAS ALIMENTARES EXISTENTES
 // ==========================================
 
-// Função para buscar alimento
 async function buscarAlimento(nomeAlimento) {
   const nomeLower = nomeAlimento.toLowerCase().trim();
-
   for (const tabela of tabelas) {
     try {
       const alimentos = await prisma[tabela].findMany({
         select: { Alimento: true, Energia__Kcal_: true, Quantidade__g_: true },
       });
-
       if (!alimentos || alimentos.length === 0) continue;
-
       const alimentoEncontrado = alimentos.find((alimento) =>
         alimento.Alimento && alimento.Alimento.toLowerCase().includes(nomeLower)
       );
-
-      if (alimentoEncontrado) {
-        return { ...alimentoEncontrado, grupo: tabela };
-      }
+      if (alimentoEncontrado) return { ...alimentoEncontrado, grupo: tabela };
     } catch (error) {
       console.error(`Erro ao buscar na tabela ${tabela}:`, error);
     }
   }
-
   return null;
 }
 
-// Rota para sugestões
 app.get("/api/sugestoes", async (req, res) => {
   const { query } = req.query;
-
-  if (!query) {
-    return res.status(400).json({ error: "O parâmetro 'query' é obrigatório" });
-  }
-
+  if (!query) return res.status(400).json({ error: "O parâmetro 'query' é obrigatório" });
   const nomeLower = query.toLowerCase().trim();
   let resultados = [];
-
   try {
     for (const tabela of tabelas) {
       const alimentos = await prisma[tabela].findMany({
-        where: {
-          Alimento: {
-            contains: nomeLower,
-          },
-        },
+        where: { Alimento: { contains: nomeLower } },
         select: { Alimento: true },
         take: 10,
       });
-
       resultados = [...resultados, ...alimentos.map((a) => a.Alimento)];
     }
-
-    if (resultados.length === 0) {
-      return res.status(404).json({ error: "Nenhum alimento encontrado" });
-    }
-
+    if (resultados.length === 0) return res.status(404).json({ error: "Nenhum alimento encontrado" });
     res.json({ sugestoes: resultados });
   } catch (error) {
     console.error("Erro ao buscar sugestões:", error);
@@ -345,31 +336,17 @@ app.get("/api/sugestoes", async (req, res) => {
   }
 });
 
-// Rota para equivalência
 app.get("/api/equivalencia", async (req, res) => {
   const { baseFood, baseQuantity, substituteFood } = req.query;
-
-  if (!baseFood || !baseQuantity || !substituteFood) {
-    return res.status(400).json({ error: "Parâmetros inválidos" });
-  }
-
+  if (!baseFood || !baseQuantity || !substituteFood) return res.status(400).json({ error: "Parâmetros inválidos" });
   try {
     const base = await buscarAlimento(baseFood);
     const substitute = await buscarAlimento(substituteFood);
-
-    if (!base || !substitute) {
-      return res.status(404).json({ error: "Alimento não encontrado" });
-    }
-
+    if (!base || !substitute) return res.status(404).json({ error: "Alimento não encontrado" });
     const baseCalories = base.Energia__Kcal_ || base.Calorias || base.Kcal;
     const substituteCalories = substitute.Energia__Kcal_ || substitute.Calorias || substitute.Kcal;
-
-    if (!baseCalories || !substituteCalories) {
-      return res.status(500).json({ error: "Erro ao obter calorias dos alimentos" });
-    }
-
+    if (!baseCalories || !substituteCalories) return res.status(500).json({ error: "Erro ao obter calorias dos alimentos" });
     const equivalentQuantity = (baseQuantity * baseCalories) / substituteCalories;
-
     res.json({
       baseFood,
       baseQuantity,
@@ -384,7 +361,6 @@ app.get("/api/equivalencia", async (req, res) => {
   }
 });
 
-// Teste de conexão com banco
 async function testDatabase() {
   for (const tabela of tabelas) {
     try {
@@ -395,7 +371,6 @@ async function testDatabase() {
     }
   }
 }
-
 testDatabase();
 
 const PORT = process.env.PORT || 5000;
