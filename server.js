@@ -39,7 +39,10 @@ const storage = new CloudinaryStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+});
 
 const tabelas = [
   "cereais_e_tuberculos",
@@ -174,21 +177,60 @@ function verificarToken(req, res, next) {
 // O Multer intercepta o arquivo enviado pelo front, manda pro Cloudinary e nos dá a URL pronta
 app.post('/api/nutri/upload-logo', verificarToken, upload.single('logo'), (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo de imagem foi enviado.' });
+    console.log('[UPLOAD] Arquivo recebido:', {
+      file: req.file ? { fieldname: req.file.fieldname, filename: req.file.filename } : 'null',
+      nutri_id: req.nutri?.id,
+    });
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo de imagem foi enviado.' });
+    }
 
     // Fallbacks inteligentes de propriedades do req.file baseados nas versões
-    const logoUrl = req.file.path || req.file.secure_url || (req.file?.url) || null;
+    const logoUrl = req.file.path || req.file.secure_url || req.file.url || null;
 
     if (!logoUrl) {
-      console.error('Upload realizado, mas URL não encontrada em req.file:', req.file);
+      console.error('[UPLOAD] URL não encontrada em req.file:', JSON.stringify(req.file, null, 2));
       return res.status(500).json({ error: 'Upload concluído, porém não foi possível recuperar a URL.' });
     }
 
+    console.log('[UPLOAD] ✅ Upload concluído:', logoUrl);
     return res.json({ logo_url: logoUrl });
   } catch (error) {
-    console.error('Erro no upload:', error);
+    console.error('[UPLOAD] ❌ Erro no upload:', error);
     return res.status(500).json({ error: 'Erro interno ao processar upload da logo.' });
   }
+}, (error, req, res, next) => {
+  // Middleware de erro do Multer
+  console.error('[MULTER_ERROR]', error);
+  
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'UNEXPECTED_FILE') {
+      return res.status(400).json({ 
+        error: `Campo 'logo' não encontrado. Erro: ${error.message}`,
+        code: 'UNEXPECTED_FILE'
+      });
+    }
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ 
+        error: 'Arquivo muito grande (máximo 5MB)',
+        code: 'LIMIT_FILE_SIZE'
+      });
+    }
+    return res.status(400).json({ 
+      error: error.message,
+      code: error.code 
+    });
+  }
+  
+  if (error) {
+    return res.status(500).json({ 
+      error: 'Erro no processamento do upload',
+      details: error.message 
+    });
+  }
+  
+  next();
 });
 
 // ==========================================
