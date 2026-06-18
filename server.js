@@ -47,7 +47,7 @@ function verificarToken(req, res, next) {
   }
 }
 
-// Rota para gerar assinatura de upload direto (Deixando 100% igual ao front-end)
+// Rota para gerar assinatura de upload direto
 app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   try {
     const timestamp = Math.round(Date.now() / 1000);
@@ -72,7 +72,6 @@ app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   }
 });
 
-// Armazenamento simplificado e direto para evitar erros de Invalid Signature e lentidão
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -84,7 +83,7 @@ const storage = new CloudinaryStorage({
 const upload = multer({ 
   storage,
   limits: { 
-    fileSize: 10 * 1024 * 1024, // Limite de 10MB
+    fileSize: 10 * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
     const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
@@ -106,7 +105,6 @@ const tabelas = [
   "verduras__hortali_as_e_derivados",
 ];
 
-// Rota raiz para teste simples
 app.get("/", (req, res) => {
   res.send("Backend online com Upload de Imagens! 🚀");
 });
@@ -115,7 +113,6 @@ app.get("/", (req, res) => {
 //          ROTAS DE AUTENTICAÇÃO
 // ==========================================
 
-// 1. Rota para Registrar um Novo Nutricionista
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { nome, email, senha, crn, chaveAcesso } = req.body;
@@ -155,7 +152,6 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
-// 2. Rota para Login do Nutricionista
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, senha } = req.body;
@@ -222,53 +218,26 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
 
     if (err) {
       console.error(`[UPLOAD] ❌ Erro do Multer (${uploadTime}ms):`, err.message);
-      
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ 
-            error: 'Arquivo muito grande (máximo 10MB)',
-            code: 'LIMIT_FILE_SIZE'
-          });
+          return res.status(400).json({ error: 'Arquivo muito grande (máximo 10MB)', code: 'LIMIT_FILE_SIZE' });
         }
-        return res.status(400).json({ 
-          error: err.message,
-          code: err.code 
-        });
+        return res.status(400).json({ error: err.message, code: err.code });
       }
-      
-      return res.status(400).json({ 
-        error: err.message || 'Erro no processamento do upload'
-      });
+      return res.status(400).json({ error: err.message || 'Erro no processamento do upload' });
     }
 
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo de imagem foi enviado.' });
     }
 
-    console.log('[UPLOAD] 📁 Arquivo recebido:', {
-      fieldname: req.file.fieldname,
-      filename: req.file.filename,
-      size: `${(req.file.size / 1024 / 1024).toFixed(2)}MB`,
-      uploadTime: `${uploadTime}ms`
-    });
-
     try {
       const logoUrl = req.file.path || req.file.secure_url || req.file.url || null;
-
       if (!logoUrl) {
-        console.error('[UPLOAD] ❌ URL não encontrada em req.file');
         return res.status(500).json({ error: 'Upload concluído, mas URL não foi recuperada.' });
       }
-
-      const totalTime = Date.now() - startTime;
-      console.log(`[UPLOAD] ✅ Sucesso! (tempo total: ${totalTime}ms)`);
-      
-      return res.json({ 
-        logo_url: logoUrl,
-        uploadTime: `${totalTime}ms`
-      });
+      return res.json({ logo_url: logoUrl, uploadTime: `${Date.now() - startTime}ms` });
     } catch (error) {
-      console.error('[UPLOAD] ❌ Erro ao processar resposta:', error);
       return res.status(500).json({ error: 'Erro ao processar resposta do upload.' });
     }
   });
@@ -278,7 +247,6 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
 //        ROTAS DE GESTÃO DE PACIENTES
 // ==========================================
 
-// 1. Cadastrar Paciente
 app.post("/api/pacientes", verificarToken, async (req, res) => {
   try {
     const { nome, email, telefone, data_nascimento, observacoes } = req.body;
@@ -309,11 +277,7 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
     res.status(201).json({ 
       message: "Paciente cadastrado com sucesso!", 
       paciente: novoPaciente,
-      acesso: {
-        usuario: novoPaciente.email,
-        senha_inicial: senhaPura,
-        link: urlAcesso
-      }
+      acesso: { usuario: novoPaciente.email, senha_inicial: senhaPura, link: urlAcesso }
     });
   } catch (error) {
     console.error("Erro ao cadastrar paciente:", error);
@@ -324,7 +288,6 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
   }
 });
 
-// 2. Listar Pacientes
 app.get("/api/pacientes", verificarToken, async (req, res) => {
   try {
     const nutricionista_id = req.nutri.id;
@@ -339,7 +302,6 @@ app.get("/api/pacientes", verificarToken, async (req, res) => {
   }
 });
 
-// 3. Editar Dados do Paciente (PUT)
 app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -360,7 +322,7 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
       },
     });
 
-    res.json({ message: "Dados do paciente updated com sucesso!", paciente: pacienteAtualizado });
+    res.json({ message: "Dados do paciente atualizados com sucesso!", paciente: pacienteAtualizado });
   } catch (error) {
     console.error("Erro ao atualizar paciente:", error);
     if (error.code === 'P2002') {
@@ -370,7 +332,173 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
   }
 });
 
-// 4. Excluir Paciente (DELETE)
 app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
   try {
-    const { id } = req.
+    const { id } = req.params;
+    const nutricionista_id = req.nutri.id;
+
+    await prisma.pacientes.delete({
+      where: { 
+        id: parseInt(id),
+        nutricionista_id
+      },
+    });
+
+    res.json({ message: "Paciente excluído com sucesso!" });
+  } catch (error) {
+    console.error("Erro ao excluir paciente:", error);
+    res.status(500).json({ error: "Erro interno ao excluir paciente." });
+  }
+});
+
+// ==========================================
+//      ROTAS DE PERSONALIZAÇÃO DO PERFIL
+// ==========================================
+
+app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
+  try {
+    const nutricionista_id = req.nutri.id;
+    const { especialidade, whatsapp, instagram, logo_url, nome, crn } = req.body;
+
+    const nutriAtualizado = await prisma.nutricionistas.update({
+      where: { id: nutricionista_id },
+      data: {
+        nome, 
+        especialidade: especialidade || null,
+        whatsapp: whatsapp || null,
+        instagram: instagram || null,
+        logo_url: logo_url || null,
+        crn: crn || null, 
+      },
+    });
+
+    res.json({
+      message: "Configurações de personalização salvas com sucesso!",
+      nutricionista: {
+        id: nutriAtualizado.id,
+        nome: nutriAtualizado.nome,
+        email: nutriAtualizado.email,
+        crn: nutriAtualizado.crn, 
+        especialidade: nutriAtualizado.especialidade,
+        whatsapp: nutriAtualizado.whatsapp,
+        instagram: nutriAtualizado.instagram,
+        logo_url: nutriAtualizado.logo_url,
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao salvar personalização:", error);
+    res.status(500).json({ error: "Erro interno ao salvar personalização." });
+  }
+});
+
+app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
+  try {
+    const nutricionista_id = req.nutri.id;
+    const nutri = await prisma.nutricionistas.findUnique({
+      where: { id: nutricionista_id },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        crn: true,
+        especialidade: true,
+        whatsapp: true,
+        instagram: true,
+        logo_url: true,
+        plano: true,
+      },
+    });
+    res.json(nutri);
+  } catch (error) {
+    console.error("Erro ao buscar perfil:", error);
+    res.status(500).json({ error: "Erro interno ao buscar perfil." });
+  }
+});
+
+// ==========================================
+//          ROTAS ALIMENTARES EXISTENTES
+// ==========================================
+
+async function buscarAlimento(nomeAlimento) {
+  const nomeLower = nomeAlimento.toLowerCase().trim();
+  for (const tabela of tabelas) {
+    try {
+      const alimentos = await prisma[tabela].findMany({
+        select: { Alimento: true, Energia__Kcal_: true, Quantidade__g_: true },
+      });
+      if (!alimentos || alimentos.length === 0) continue;
+      const alimentoEncontrado = alimentos.find((alimento) =>
+        alimento.Alimento && alimento.Alimento.toLowerCase().includes(nomeLower)
+      );
+      if (alimentoEncontrado) return { ...alimentoEncontrado, group: tabela };
+    } catch (error) {
+      console.error(`Erro ao buscar na tabela ${tabela}:`, error);
+    }
+  }
+  return null;
+}
+
+app.get("/api/sugestoes", async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.status(400).json({ error: "O parâmetro 'query' é obrigatório" });
+  const nomeLower = query.toLowerCase().trim();
+  let resultados = [];
+  try {
+    for (const tabela of tabelas) {
+      const alimentos = await prisma[tabela].findMany({
+        where: { Alimento: { contains: nomeLower } },
+        select: { Alimento: true },
+        take: 10,
+      });
+      resultados = [...resultados, ...alimentos.map((a) => a.Alimento)];
+    }
+    if (resultados.length === 0) return res.status(404).json({ error: "Nenhum alimento encontrado" });
+    res.json({ sugestoes: resultados });
+  } catch (error) {
+    console.error("Erro ao buscar suggestions:", error);
+    res.status(500).json({ error: "Erro interno no servidor" });
+  }
+});
+
+app.get("/api/equivalencia", async (req, res) => {
+  const { baseFood, baseQuantity, substituteFood } = req.query;
+  if (!baseFood || !baseQuantity || !substituteFood) return res.status(400).json({ error: "Parâmetros inválidos" });
+  try {
+    const base = await buscarAlimento(baseFood);
+    const substitute = await buscarAlimento(substituteFood);
+    if (!base || !substitute) return res.status(404).json({ error: "Alimento não encontrado" });
+    const baseCalories = base.Energia__Kcal_ || base.Calorias || base.Kcal;
+    const substituteCalories = substitute.Energia__Kcal_ || substitute.Calorias || substitute.Kcal;
+    if (!baseCalories || !substituteCalories) return res.status(500).json({ error: "Erro ao obter calorias dos alimentos" });
+    const equivalentQuantity = (baseQuantity * baseCalories) / substituteCalories;
+    
+    res.json({
+      baseFood,
+      baseQuantity,
+      substituteFood,
+      equivalentQuantity: equivalentQuantity.toFixed(2),
+      baseGroup: base.group,
+      substituteGroup: substitute.group,
+    });
+  } catch (error) {
+    console.error("Erro ao buscar equivalência:", error);
+    res.status(500).json({ error: "Erro interno no servidor" });
+  }
+});
+
+async function testDatabase() {
+  for (const tabela of tabelas) {
+    try {
+      await prisma[tabela].findFirst();
+      console.log(`✅ Conexão com ${tabela} bem-sucedida!`);
+    } catch (error) {
+      console.error(`❌ Erro ao conectar com ${tabela}:`, error);
+    }
+  }
+}
+testDatabase();
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
