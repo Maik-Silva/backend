@@ -30,18 +30,21 @@ cloudinary.config({
 });
 
 // Para multer-storage-cloudinary v4 a opção é `params` que pode ser uma função ou objeto.
+// ⚠️ REMOVIDA TRANSFORMAÇÃO - vai ser feita no frontend
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: 'equivale_logos',
     allowed_formats: ['jpg', 'png', 'jpeg'],
-    transformation: [{ width: 500, height: 500, crop: 'limit' }],
+    // ❌ Transformação removida - será feita no frontend
   },
 });
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
 });
 
 const tabelas = [
@@ -174,63 +177,70 @@ function verificarToken(req, res, next) {
 // ==========================================
 //        ROTA EXCLUSIVA DE UPLOAD DE LOGO
 // ==========================================
-// O Multer intercepta o arquivo enviado pelo front, manda pro Cloudinary e nos dá a URL pronta
-app.post('/api/nutri/upload-logo', verificarToken, upload.single('logo'), (req, res) => {
-  try {
-    console.log('[UPLOAD] Arquivo recebido:', {
-      file: req.file ? { fieldname: req.file.fieldname, filename: req.file.filename } : 'null',
-      nutri_id: req.nutri?.id,
-    });
+app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
+  console.log('[UPLOAD] ⏱️  Iniciando upload...');
+  const startTime = Date.now();
 
+  upload.single('logo')(req, res, (err) => {
+    const uploadTime = Date.now() - startTime;
+    console.log(`[UPLOAD] ✏️  Multer processou em ${uploadTime}ms`);
+
+    // Erro do Multer
+    if (err) {
+      console.error(`[UPLOAD] ❌ Erro do Multer (${uploadTime}ms):`, err.message);
+      
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ 
+            error: 'Arquivo muito grande (máximo 10MB)',
+            code: 'LIMIT_FILE_SIZE'
+          });
+        }
+        return res.status(400).json({ 
+          error: err.message,
+          code: err.code 
+        });
+      }
+      
+      return res.status(500).json({ 
+        error: 'Erro no processamento do upload',
+        details: err.message 
+      });
+    }
+
+    // Validar arquivo
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo de imagem foi enviado.' });
     }
 
-    // Fallbacks inteligentes de propriedades do req.file baseados nas versões
-    const logoUrl = req.file.path || req.file.secure_url || req.file.url || null;
-
-    if (!logoUrl) {
-      console.error('[UPLOAD] URL não encontrada em req.file:', JSON.stringify(req.file, null, 2));
-      return res.status(500).json({ error: 'Upload concluído, porém não foi possível recuperar a URL.' });
-    }
-
-    console.log('[UPLOAD] ✅ Upload concluído:', logoUrl);
-    return res.json({ logo_url: logoUrl });
-  } catch (error) {
-    console.error('[UPLOAD] ❌ Erro no upload:', error);
-    return res.status(500).json({ error: 'Erro interno ao processar upload da logo.' });
-  }
-}, (error, req, res, next) => {
-  // Middleware de erro do Multer
-  console.error('[MULTER_ERROR]', error);
-  
-  if (error instanceof multer.MulterError) {
-    if (error.code === 'UNEXPECTED_FILE') {
-      return res.status(400).json({ 
-        error: `Campo 'logo' não encontrado. Erro: ${error.message}`,
-        code: 'UNEXPECTED_FILE'
-      });
-    }
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ 
-        error: 'Arquivo muito grande (máximo 5MB)',
-        code: 'LIMIT_FILE_SIZE'
-      });
-    }
-    return res.status(400).json({ 
-      error: error.message,
-      code: error.code 
+    console.log('[UPLOAD] 📁 Arquivo recebido:', {
+      fieldname: req.file.fieldname,
+      filename: req.file.filename,
+      size: req.file.size,
+      uploadTime: `${uploadTime}ms`
     });
-  }
-  
-  if (error) {
-    return res.status(500).json({ 
-      error: 'Erro no processamento do upload',
-      details: error.message 
-    });
-  }
-  
-  next();
+
+    try {
+      // Extrair URL
+      const logoUrl = req.file.path || req.file.secure_url || req.file.url || null;
+
+      if (!logoUrl) {
+        console.error('[UPLOAD] ❌ URL não encontrada em req.file:', JSON.stringify(req.file, null, 2));
+        return res.status(500).json({ error: 'Upload concluído, porém não foi possível recuperar a URL.' });
+      }
+
+      const totalTime = Date.now() - startTime;
+      console.log(`[UPLOAD] ✅ Sucesso! URL: ${logoUrl} (tempo total: ${totalTime}ms)`);
+      
+      return res.json({ 
+        logo_url: logoUrl,
+        uploadTime: `${totalTime}ms` // Para debug no frontend
+      });
+    } catch (error) {
+      console.error('[UPLOAD] ❌ Erro ao processar resposta:', error);
+      return res.status(500).json({ error: 'Erro ao processar resposta do upload.' });
+    }
+  });
 });
 
 // ==========================================
