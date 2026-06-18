@@ -6,7 +6,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { PrismaClient } = require("@prisma/client");
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
+// AJUSTE AQUI: Removido o ".v2" para total compatibilidade com a versão 1.x do package.json
+const cloudinary = require("cloudinary"); 
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const app = express();
@@ -19,7 +20,7 @@ app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET || "chave_secreta_padrao_equivale_saas";
 
 // ==========================================
-//       CONFIGURAÇÃO DO CLOUDINARY
+//        CONFIGURAÇÃO DO CLOUDINARY
 // ==========================================
 cloudinary.config({
   cloud_name: "dpop2y72p",
@@ -33,7 +34,8 @@ const storage = new CloudinaryStorage({
   params: {
     folder: "equivale_logos", // Nome da pasta que será criada no seu Cloudinary
     allowed_formats: ["jpg", "png", "jpeg"],
-    transformation: [{ width: 500, height: 500, crop: "limit" }] // Redimensiona para não ocupar espaço à toa
+    // AJUSTE AQUI: Sintaxe de transformação adaptada perfeitamente para a v1
+    transformation: [{ width: 500, height: 500, crop: "limit" }] 
   },
 });
 
@@ -167,10 +169,8 @@ function verificarToken(req, res, next) {
 }
 
 // ==========================================
-//       ROTA EXCLUSIVA DE UPLOAD DE LOGO
+//        ROTA EXCLUSIVA DE UPLOAD DE LOGO
 // ==========================================
-
-// O Multer intercepta o arquivo enviado pelo front, manda pro Cloudinary e nos dá a URL pronta
 app.post("/api/nutri/upload-logo", verificarToken, upload.single("logo"), (req, res) => {
   try {
     if (!req.file) {
