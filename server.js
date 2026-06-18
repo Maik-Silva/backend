@@ -280,22 +280,20 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
 //        ROTAS DE GESTÃO DE PACIENTES
 // ==========================================
 
+// 1. Cadastrar Paciente
 app.post("/api/pacientes", verificarToken, async (req, res) => {
   try {
     const { nome, email, telefone, data_nascimento, observacoes } = req.body;
     const nutricionista_id = req.nutri.id;
 
-    // Regra rígida de validação para garantir a integridade da criação da conta do paciente
     if (!nome || !email || !telefone || !data_nascimento) {
       return res.status(400).json({ error: "Nome, E-mail, Telefone e Data de Nascimento são obrigatórios." });
     }
 
-    // 1. Limpa o telefone para criar a senha padrão apenas com os dígitos numéricos
     const senhaPura = telefone.replace(/\D/g, ""); 
     const salt = await bcrypt.genSalt(10);
     const senha_hash = await bcrypt.hash(senhaPura, salt);
 
-    // 2. Registra o paciente atrelando a senha criptografada de forma segura
     const novoPaciente = await prisma.pacientes.create({
       data: {
         nutricionista_id,
@@ -303,196 +301,4 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
         email: email.trim().toLowerCase(),
         telefone,
         senha_hash, 
-        data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
-        observacoes: observacoes || null,
-      },
-    });
-
-    // 3. Monta o link amigável de redirecionamento dinâmico contendo o e-mail preenchido
-    const urlAcesso = `https://equivale-saas.vercel.app/login?usuario=${encodeURIComponent(novoPaciente.email)}`;
-
-    res.status(201).json({ 
-      message: "Paciente cadastrado com sucesso!", 
-      paciente: novoPaciente,
-      acesso: {
-        usuario: novoPaciente.email,
-        senha_inicial: senhaPura,
-        link: urlAcesso
-      }
-    });
-  } catch (error) {
-    console.error("Erro ao cadastrar paciente:", error);
-    // Previne duplicações de e-mail de paciente no banco
-    if (error.code === 'P2002') {
-      return res.status(400).json({ error: "Este e-mail de paciente já está cadastrado no sistema." });
-    }
-    res.status(500).json({ error: "Erro interno ao cadastrar paciente." });
-  }
-});
-
-app.get("/api/pacientes", verificarToken, async (req, res) => {
-  try {
-    const nutricionista_id = req.nutri.id;
-    const listaPacientes = await prisma.pacientes.findMany({
-      where: { nutricionista_id },
-      orderBy: { nome: "asc" },
-    });
-    res.json(listaPacientes);
-  } catch (error) {
-    console.error("Erro ao buscar pacientes:", error);
-    res.status(500).json({ error: "Erro interno ao listar pacientes." });
-  }
-});
-
-// ==========================================
-//      ROTAS DE PERSONALIZAÇÃO DO PERFIL
-// ==========================================
-
-app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
-  try {
-    const nutricionista_id = req.nutri.id;
-    const { especialidade, whatsapp, instagram, logo_url, nome, crn } = req.body;
-
-    const nutriAtualizado = await prisma.nutricionistas.update({
-      where: { id: nutricionista_id },
-      data: {
-        nome, 
-        especialidade: especialidade || null,
-        whatsapp: whatsapp || null,
-        instagram: instagram || null,
-        logo_url: logo_url || null,
-        crn: crn || null, 
-      },
-    });
-
-    res.json({
-      message: "Configurações de personalização salvas com sucesso!",
-      nutricionista: {
-        id: nutriAtualizado.id,
-        nome: nutriAtualizado.nome,
-        email: nutriAtualizado.email,
-        crn: nutriAtualizado.crn, 
-        especialidade: nutriAtualizado.especialidade,
-        whatsapp: nutriAtualizado.whatsapp,
-        instagram: nutriAtualizado.instagram,
-        logo_url: nutriAtualizado.logo_url,
-      },
-    });
-  } catch (error) {
-    console.error("Erro ao salvar personalização:", error);
-    res.status(500).json({ error: "Erro interno ao salvar personalização." });
-  }
-});
-
-app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
-  try {
-    const nutricionista_id = req.nutri.id;
-    const nutri = await prisma.nutricionistas.findUnique({
-      where: { id: nutricionista_id },
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        crn: true,
-        especialidade: true,
-        whatsapp: true,
-        instagram: true,
-        logo_url: true,
-        plano: true,
-      },
-    });
-    res.json(nutri);
-  } catch (error) {
-    console.error("Erro ao buscar perfil:", error);
-    res.status(500).json({ error: "Erro interno ao buscar perfil." });
-  }
-});
-
-// ==========================================
-//          ROTAS ALIMENTARES EXISTENTES
-// ==========================================
-
-async function buscarAlimento(nomeAlimento) {
-  const nomeLower = nomeAlimento.toLowerCase().trim();
-  for (const tabela of tabelas) {
-    try {
-      const alimentos = await prisma[tabela].findMany({
-        select: { Alimento: true, Energia__Kcal_: true, Quantidade__g_: true },
-      });
-      if (!alimentos || alimentos.length === 0) continue;
-      const alimentoEncontrado = alimentos.find((alimento) =>
-        alimento.Alimento && alimento.Alimento.toLowerCase().includes(nomeLower)
-      );
-      if (alimentoEncontrado) return { ...alimentoEncontrado, group: tabela };
-    } catch (error) {
-      console.error(`Erro ao buscar na tabela ${tabela}:`, error);
-    }
-  }
-  return null;
-}
-
-app.get("/api/sugestoes", async (req, res) => {
-  const { query } = req.query;
-  if (!query) return res.status(400).json({ error: "O parâmetro 'query' é obrigatório" });
-  const nomeLower = query.toLowerCase().trim();
-  let resultados = [];
-  try {
-    for (const tabela of tabelas) {
-      const alimentos = await prisma[tabela].findMany({
-        where: { Alimento: { contains: nomeLower } },
-        select: { Alimento: true },
-        take: 10,
-      });
-      resultados = [...resultados, ...alimentos.map((a) => a.Alimento)];
-    }
-    if (resultados.length === 0) return res.status(404).json({ error: "Nenhum alimento encontrado" });
-    res.json({ sugestoes: resultados });
-  } catch (error) {
-    console.error("Erro ao buscar suggestions:", error);
-    res.status(500).json({ error: "Erro interno no servidor" });
-  }
-});
-
-app.get("/api/equivalencia", async (req, res) => {
-  const { baseFood, baseQuantity, substituteFood } = req.query;
-  if (!baseFood || !baseQuantity || !substituteFood) return res.status(400).json({ error: "Parâmetros inválidos" });
-  try {
-    const base = await buscarAlimento(baseFood);
-    const substitute = await buscarAlimento(substituteFood);
-    if (!base || !substitute) return res.status(404).json({ error: "Alimento não encontrado" });
-    const baseCalories = base.Energia__Kcal_ || base.Calorias || base.Kcal;
-    const substituteCalories = substitute.Energia__Kcal_ || substitute.Calorias || substitute.Kcal;
-    if (!baseCalories || !substituteCalories) return res.status(500).json({ error: "Erro ao obter calorias dos alimentos" });
-    const equivalentQuantity = (baseQuantity * baseCalories) / substituteCalories;
-    
-    // Mapeamento corrigido garantindo estabilidade nas mensagens de choque de categorias
-    res.json({
-      baseFood,
-      baseQuantity,
-      substituteFood,
-      equivalentQuantity: equivalentQuantity.toFixed(2),
-      baseGroup: base.group,
-      substituteGroup: substitute.group,
-    });
-  } catch (error) {
-    console.error("Erro ao buscar equivalência:", error);
-    res.status(500).json({ error: "Erro interno no servidor" });
-  }
-});
-
-async function testDatabase() {
-  for (const tabela of tabelas) {
-    try {
-      await prisma[tabela].findFirst();
-      console.log(`✅ Conexão com ${tabela} bem-sucedida!`);
-    } catch (error) {
-      console.error(`❌ Erro ao conectar com ${tabela}:`, error);
-    }
-  }
-}
-testDatabase();
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+        data_nascimento: data_nascimento ? new Date(data_nascimento)
