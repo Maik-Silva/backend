@@ -59,7 +59,6 @@ const storage = new CloudinaryStorage({
   params: {
     folder: 'equivale_logos',
     allowed_formats: ['jpg', 'png', 'jpeg'],
-    // Removido parâmetros de 'eager' assíncronos que barravam a assinatura nas contas free
   },
 });
 
@@ -211,7 +210,6 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
   console.log('[UPLOAD] ⏱️  Iniciando upload via Multer...');
   const startTime = Date.now();
 
-  // Timeout preventivo de 25 segundos
   const uploadTimeout = setTimeout(() => {
     console.error('[UPLOAD] ❌ Timeout no upload (>25s)');
     if (!res.headersSent) {
@@ -287,24 +285,47 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
     const { nome, email, telefone, data_nascimento, observacoes } = req.body;
     const nutricionista_id = req.nutri.id;
 
-    if (!nome) {
-      return res.status(400).json({ error: "O nome do paciente é obrigatório." });
+    // Regra rígida de validação para garantir a integridade da criação da conta do paciente
+    if (!nome || !email || !telefone || !data_nascimento) {
+      return res.status(400).json({ error: "Nome, E-mail, Telefone e Data de Nascimento são obrigatórios." });
     }
 
+    // 1. Limpa o telefone para criar a senha padrão apenas com os dígitos numéricos
+    const senhaPura = telefone.replace(/\D/g, ""); 
+    const salt = await bcrypt.genSalt(10);
+    const senha_hash = await bcrypt.hash(senhaPura, salt);
+
+    // 2. Registra o paciente atrelando a senha criptografada de forma segura
     const novoPaciente = await prisma.pacientes.create({
       data: {
         nutricionista_id,
         nome,
-        email: email || null,
-        telefone: telefone || null,
+        email: email.trim().toLowerCase(),
+        telefone,
+        senha_hash, 
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
       },
     });
 
-    res.status(201).json({ message: "Paciente cadastrado com sucesso!", paciente: novoPaciente });
+    // 3. Monta o link amigável de redirecionamento dinâmico contendo o e-mail preenchido
+    const urlAcesso = `https://equivale-saas.vercel.app/login?usuario=${encodeURIComponent(novoPaciente.email)}`;
+
+    res.status(201).json({ 
+      message: "Paciente cadastrado com sucesso!", 
+      paciente: novoPaciente,
+      acesso: {
+        usuario: novoPaciente.email,
+        senha_inicial: senhaPura,
+        link: urlAcesso
+      }
+    });
   } catch (error) {
     console.error("Erro ao cadastrar paciente:", error);
+    // Previne duplicações de e-mail de paciente no banco
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: "Este e-mail de paciente já está cadastrado no sistema." });
+    }
     res.status(500).json({ error: "Erro interno ao cadastrar paciente." });
   }
 });
@@ -330,7 +351,6 @@ app.get("/api/pacientes", verificarToken, async (req, res) => {
 app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
   try {
     const nutricionista_id = req.nutri.id;
-    // Alterado para desestruturar também o campo 'crn' enviado pelo front-end
     const { especialidade, whatsapp, instagram, logo_url, nome, crn } = req.body;
 
     const nutriAtualizado = await prisma.nutricionistas.update({
@@ -341,7 +361,7 @@ app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
         whatsapp: whatsapp || null,
         instagram: instagram || null,
         logo_url: logo_url || null,
-        crn: crn || null, // Alterado para persistir o CRN corretamente no MySQL
+        crn: crn || null, 
       },
     });
 
@@ -351,7 +371,7 @@ app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
         id: nutriAtualizado.id,
         nome: nutriAtualizado.nome,
         email: nutriAtualizado.email,
-        crn: nutriAtualizado.crn, // Incluído no retorno para sincronização correta do front-end
+        crn: nutriAtualizado.crn, 
         especialidade: nutriAtualizado.especialidade,
         whatsapp: nutriAtualizado.whatsapp,
         instagram: nutriAtualizado.instagram,
@@ -444,13 +464,15 @@ app.get("/api/equivalencia", async (req, res) => {
     const substituteCalories = substitute.Energia__Kcal_ || substitute.Calorias || substitute.Kcal;
     if (!baseCalories || !substituteCalories) return res.status(500).json({ error: "Erro ao obter calorias dos alimentos" });
     const equivalentQuantity = (baseQuantity * baseCalories) / substituteCalories;
+    
+    // Mapeamento corrigido garantindo estabilidade nas mensagens de choque de categorias
     res.json({
       baseFood,
       baseQuantity,
       substituteFood,
       equivalentQuantity: equivalentQuantity.toFixed(2),
-      baseGroup: base.grupo,
-      substituteGroup: substitute.grupo,
+      baseGroup: base.group,
+      substituteGroup: substitute.group,
     });
   } catch (error) {
     console.error("Erro ao buscar equivalência:", error);
