@@ -197,6 +197,31 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+// ROTA NOVA: ALTERAÇÃO DE SENHA DO NUTRICIONISTA
+app.post("/api/nutri/alterar-senha", verificarToken, async (req, res) => {
+  try {
+    const nutricionista_id = req.nutri.id;
+    const { nova_senha } = req.body;
+
+    if (!nova_senha) {
+      return res.status(400).json({ error: "A nova senha é obrigatória." });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const senha_hash = await bcrypt.hash(nova_senha, salt);
+
+    await prisma.nutricionistas.update({
+      where: { id: nutricionista_id },
+      data: { senha_hash },
+    });
+
+    res.json({ message: "Senha alterada com sucesso!" });
+  } catch (error) {
+    console.error("Erro ao alterar senha:", error);
+    res.status(500).json({ error: "Erro interno ao alterar senha." });
+  }
+});
+
 // ==========================================
 //    ROTA EXCLUSIVA DE UPLOAD DE LOGO (MULTER)
 // ==========================================
