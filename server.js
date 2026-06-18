@@ -90,7 +90,7 @@ app.post("/api/auth/register", async (req, res) => {
 // 2. Rota para Login do Nutricionista
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { email, sender, senha } = req.body; // Aceita tanto 'senha' quanto possíveis variações
+    const { email, senha } = req.body;
     const senhaFinal = senha || req.body.password; 
 
     if (!email || !senhaFinal) {
@@ -138,6 +138,142 @@ app.post("/api/auth/login", async (req, res) => {
   } catch (error) {
     console.error("Erro no login:", error);
     res.status(500).json({ error: "Erro interno ao realizar login." });
+  }
+});
+
+// ==========================================
+//    MIDDLEWARE DE PROTEÇÃO DE ROTAS (JWT)
+// ==========================================
+
+function verificarToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Pega o token após o "Bearer "
+
+  if (!token) {
+    return res.status(401).json({ error: "Acesso negado. Faça login para continuar." });
+  }
+
+  try {
+    const verificado = jwt.verify(token, JWT_SECRET);
+    req.nutri = verificado; // Guarda { id, email } dentro da requisição
+    next();
+  } catch (error) {
+    return res.status(403).json({ error: "Sessão expirada ou token inválido. Faça login novamente." });
+  }
+}
+
+// ==========================================
+//        ROTAS DE GESTÃO DE PACIENTES
+// ==========================================
+
+// 1. Cadastrar um novo paciente (Apenas para o Nutri logado)
+app.post("/api/pacientes", verificarToken, async (req, res) => {
+  try {
+    const { nome, email, telefone, data_nascimento, observacoes } = req.body;
+    const nutricionista_id = req.nutri.id; // ID pego automaticamente do Token
+
+    if (!nome) {
+      return res.status(400).json({ error: "O nome do paciente é obrigatório." });
+    }
+
+    const novoPaciente = await prisma.pacientes.create({
+      data: {
+        nutricionista_id,
+        nome,
+        email: email || null,
+        telefone: telefone || null,
+        data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
+        observacoes: observacoes || null,
+      },
+    });
+
+    res.status(201).json({ message: "Paciente cadastrado com sucesso!", paciente: novoPaciente });
+  } catch (error) {
+    console.error("Erro ao cadastrar paciente:", error);
+    res.status(500).json({ error: "Erro interno ao cadastrar paciente." });
+  }
+});
+
+// 2. Listar apenas os pacientes do Nutri logado
+app.get("/api/pacientes", verificarToken, async (req, res) => {
+  try {
+    const nutricionista_id = req.nutri.id;
+
+    const listaPacientes = await prisma.pacientes.findMany({
+      where: { nutricionista_id },
+      orderBy: { nome: "asc" },
+    });
+
+    res.json(listaPacientes);
+  } catch (error) {
+    console.error("Erro ao buscar pacientes:", error);
+    res.status(500).json({ error: "Erro interno ao listar pacientes." });
+  }
+});
+
+// ==========================================
+//      ROTAS DE PERSONALIZAÇÃO DO PERFIL
+// ==========================================
+
+// 3. Salvar/Atualizar os dados de personalização do Nutricionista
+app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
+  try {
+    const nutricionista_id = req.nutri.id;
+    const { especialidade, whatsapp, instagram, logo_url, nome } = req.body;
+
+    const nutriAtualizado = await prisma.nutricionistas.update({
+      where: { id: nutricionista_id },
+      data: {
+        nome, 
+        especialidade: especialidade || null,
+        whatsapp: whatsapp || null,
+        instagram: instagram || null,
+        logo_url: logo_url || null,
+      },
+    });
+
+    res.json({
+      message: "Configurações de personalização salvas com sucesso!",
+      nutricionista: {
+        id: nutriAtualizado.id,
+        nome: nutriAtualizado.nome,
+        email: nutriAtualizado.email,
+        especialidade: nutriAtualizado.especialidade,
+        whatsapp: nutriAtualizado.whatsapp,
+        instagram: nutriAtualizado.instagram,
+        logo_url: nutriAtualizado.logo_url,
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao salvar personalização:", error);
+    res.status(500).json({ error: "Erro interno ao salvar personalização." });
+  }
+});
+
+// 4. Buscar os dados atuais do perfil do Nutricionista
+app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
+  try {
+    const nutricionista_id = req.nutri.id;
+
+    const nutri = await prisma.nutricionistas.findUnique({
+      where: { id: nutricionista_id },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        crn: true,
+        especialidade: true,
+        whatsapp: true,
+        instagram: true,
+        logo_url: true,
+        plano: true,
+      },
+    });
+
+    res.json(nutri);
+  } catch (error) {
+    console.error("Erro ao buscar perfil:", error);
+    res.status(500).json({ error: "Erro interno ao buscar perfil." });
   }
 });
 
