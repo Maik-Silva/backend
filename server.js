@@ -20,26 +20,26 @@ app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET || "chave_secreta_padrao_equivale_saas";
 
 // ==========================================
-//        CONFIGURAÇÃO DO CLOUDINARY
+//       CONFIGURAÇÃO DO CLOUDINARY + MULTER
 // ==========================================
+// Cloudinary v1 usa require('cloudinary') — já importado como `cloudinary` no topo.
 cloudinary.config({
-  cloud_name: "dpop2y72p",
-  api_key: "747585153614338",
-  api_secret: "6Ogf8L7dPumZmjAHA2cxW3-fd7k"
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dpop2y72p',
+  api_key: process.env.CLOUDINARY_API_KEY || '747585153614338',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k',
 });
 
-// Configurando o Multer para mandar o arquivo direto para o Cloudinary
+// Para multer-storage-cloudinary v4 a opção é `params` que pode ser uma função ou objeto.
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
+  cloudinary,
   params: {
-    folder: "equivale_logos", // Nome da pasta que será criada no seu Cloudinary
-    allowed_formats: ["jpg", "png", "jpeg"],
-    // AJUSTE AQUI: Sintaxe de transformação adaptada perfeitamente para a v1
-    transformation: [{ width: 500, height: 500, crop: "limit" }] 
+    folder: 'equivale_logos',
+    allowed_formats: ['jpg', 'png', 'jpeg'],
+    transformation: [{ width: 500, height: 500, crop: 'limit' }],
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
 const tabelas = [
   "cereais_e_tuberculos",
@@ -171,16 +171,23 @@ function verificarToken(req, res, next) {
 // ==========================================
 //        ROTA EXCLUSIVA DE UPLOAD DE LOGO
 // ==========================================
-app.post("/api/nutri/upload-logo", verificarToken, upload.single("logo"), (req, res) => {
+// O Multer intercepta o arquivo enviado pelo front, manda pro Cloudinary e nos dá a URL pronta
+app.post('/api/nutri/upload-logo', verificarToken, upload.single('logo'), (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "Nenhum arquivo de imagem foi enviado." });
+    if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo de imagem foi enviado.' });
+
+    // Fallbacks inteligentes de propriedades do req.file baseados nas versões
+    const logoUrl = req.file.path || req.file.secure_url || (req.file?.url) || null;
+
+    if (!logoUrl) {
+      console.error('Upload realizado, mas URL não encontrada em req.file:', req.file);
+      return res.status(500).json({ error: 'Upload concluído, porém não foi possível recuperar a URL.' });
     }
-    // Retorna a URL segura gerada pelo Cloudinary para o Frontend usar
-    res.json({ logo_url: req.file.path });
+
+    return res.json({ logo_url: logoUrl });
   } catch (error) {
-    console.error("Erro no upload:", error);
-    res.status(500).json({ error: "Erro interno ao processar upload da logo." });
+    console.error('Erro no upload:', error);
+    return res.status(500).json({ error: 'Erro interno ao processar upload da logo.' });
   }
 });
 
@@ -306,7 +313,7 @@ async function buscarAlimento(nomeAlimento) {
       const alimentoEncontrado = alimentos.find((alimento) =>
         alimento.Alimento && alimento.Alimento.toLowerCase().includes(nomeLower)
       );
-      if (alimentoEncontrado) return { ...alimentoEncontrado, grupo: tabela };
+      if (alimentoEncontrado) return { ...alimentoEncontrado, group: tabela };
     } catch (error) {
       console.error(`Erro ao buscar na tabela ${tabela}:`, error);
     }
