@@ -35,11 +35,19 @@ app.get("/", (req, res) => {
 //          ROTAS DE AUTENTICAÇÃO
 // ==========================================
 
-// 1. Rota para Registrar um Novo Nutricionista
+// 1. Rota para Registrar um Novo Nutricionista (Com validação de cupom/chave)
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { nome, email, senha, crn } = req.body;
+    const { nome, email, senha, crn, chaveAcesso } = req.body;
 
+    // Validação da Chave de Convite Beta
+    const CHAVE_VALIDA = process.env.CHAVE_CONVITE || "BETA100EQUIVALE";
+
+    if (!chaveAcesso || chaveAcesso.trim() !== CHAVE_VALIDA) {
+      return res.status(403).json({ error: "Chave de convite inválida ou expirada." });
+    }
+
+    // Validação de campos obrigatórios gerais
     if (!nome || !email || !senha) {
       return res.status(400).json({ error: "Nome, e-mail e senha são obrigatórios." });
     }
@@ -82,9 +90,10 @@ app.post("/api/auth/register", async (req, res) => {
 // 2. Rota para Login do Nutricionista
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { email, senha } = req.body;
+    const { email, sender, senha } = req.body; // Aceita tanto 'senha' quanto possíveis variações
+    const senhaFinal = senha || req.body.password; 
 
-    if (!email || !senha) {
+    if (!email || !senhaFinal) {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
     }
 
@@ -98,7 +107,7 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Compara a senha digitada com o hash salvo no banco
-    const senhaCorreta = await bcrypt.compare(senha, nutri.senha_hash);
+    const senhaCorreta = await bcrypt.compare(senhaFinal, nutri.senha_hash);
     if (!senhaCorreta) {
       return res.status(400).json({ error: "Credenciais inválidas." });
     }
