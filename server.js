@@ -27,12 +27,31 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k',
 });
 
+// ==========================================
+//    MIDDLEWARE DE PROTEÇÃO DE ROTAS (JWT)
+// ==========================================
+function verificarToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "Acesso negado. Faça login para continuar." });
+  }
+
+  try {
+    const verificado = jwt.verify(token, JWT_SECRET);
+    req.nutri = verificado;
+    next();
+  } catch (error) {
+    return res.status(403).json({ error: "Sessão expirada ou token inválido. Faça login novamente." });
+  }
+}
+
 // Rota para gerar assinatura de upload direto (Deixando 100% igual ao front-end)
 app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   try {
     const timestamp = Math.round(Date.now() / 1000);
     
-    // Simplificado: tiramos as regras extras para bater direto com o que o front envia
     const signature = cloudinary.utils.api_sign_request(
       {
         timestamp: timestamp,
@@ -53,7 +72,7 @@ app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   }
 });
 
-// SOLUÇÃO DO CONFLITO: Armazenamento simplificado e direto para evitar erros de Invalid Signature e lentidão
+// Armazenamento simplificado e direto para evitar erros de Invalid Signature e lentidão
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -183,27 +202,6 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // ==========================================
-//    MIDDLEWARE DE PROTEÇÃO DE ROTAS (JWT)
-// ==========================================
-
-function verificarToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-
-  if (!token) {
-    return res.status(401).json({ error: "Acesso negado. Faça login para continuar." });
-  }
-
-  try {
-    const verificado = jwt.verify(token, JWT_SECRET);
-    req.nutri = verificado;
-    next();
-  } catch (error) {
-    return res.status(403).json({ error: "Sessão expirada ou token inválido. Faça login novamente." });
-  }
-}
-
-// ==========================================
 //    ROTA EXCLUSIVA DE UPLOAD DE LOGO (MULTER)
 // ==========================================
 app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
@@ -301,4 +299,78 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
         email: email.trim().toLowerCase(),
         telefone,
         senha_hash, 
-        data_nascimento: data_nascimento ? new Date(data_nascimento)
+        data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
+        observacoes: observacoes || null,
+      },
+    });
+
+    const urlAcesso = `https://equivale-saas.vercel.app/login?usuario=${encodeURIComponent(novoPaciente.email)}`;
+
+    res.status(201).json({ 
+      message: "Paciente cadastrado com sucesso!", 
+      paciente: novoPaciente,
+      acesso: {
+        usuario: novoPaciente.email,
+        senha_inicial: senhaPura,
+        link: urlAcesso
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao cadastrar paciente:", error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: "Este e-mail de paciente já está cadastrado no sistema." });
+    }
+    res.status(500).json({ error: "Erro interno ao cadastrar paciente." });
+  }
+});
+
+// 2. Listar Pacientes
+app.get("/api/pacientes", verificarToken, async (req, res) => {
+  try {
+    const nutricionista_id = req.nutri.id;
+    const listaPacientes = await prisma.pacientes.findMany({
+      where: { nutricionista_id },
+      orderBy: { nome: "asc" },
+    });
+    res.json(listaPacientes);
+  } catch (error) {
+    console.error("Erro ao buscar pacientes:", error);
+    res.status(500).json({ error: "Erro interno ao listar pacientes." });
+  }
+});
+
+// 3. Editar Dados do Paciente (PUT)
+app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, email, telefone, data_nascimento, observacoes } = req.body;
+    const nutricionista_id = req.nutri.id;
+
+    const pacienteAtualizado = await prisma.pacientes.update({
+      where: { 
+        id: parseInt(id),
+        nutricionista_id
+      },
+      data: {
+        nome,
+        email: email ? email.trim().toLowerCase() : undefined,
+        telefone,
+        data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
+        observacoes: observacoes || null,
+      },
+    });
+
+    res.json({ message: "Dados do paciente updated com sucesso!", paciente: pacienteAtualizado });
+  } catch (error) {
+    console.error("Erro ao atualizar paciente:", error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: "Este e-mail já está sendo utilizado por outro paciente." });
+    }
+    res.status(500).json({ error: "Erro interno ao atualizar dados do paciente." });
+  }
+});
+
+// 4. Excluir Paciente (DELETE)
+app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
+  try {
+    const { id } = req.
