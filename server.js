@@ -27,18 +27,16 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k',
 });
 
-// Rota para gerar assinatura de upload direto (Mantida caso use no Front)
+// Rota para gerar assinatura de upload direto (Deixando 100% igual ao front-end)
 app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   try {
     const timestamp = Math.round(Date.now() / 1000);
     
+    // Simplificado: tiramos as regras extras para bater direto com o que o front envia
     const signature = cloudinary.utils.api_sign_request(
       {
         timestamp: timestamp,
         folder: 'equivale_logos',
-        quality: 'auto',
-        fetch_format: 'auto',
-        max_file_size: 10485760,
       },
       process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k'
     );
