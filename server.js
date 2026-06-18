@@ -19,7 +19,7 @@ app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET || "chave_secreta_padrao_equivale_saas";
 
 // ==========================================
-//       CONFIGURAÇÃO DO CLOUDINARY + MULTER
+//        CONFIGURAÇÃO DO CLOUDINARY + MULTER
 // ==========================================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dpop2y72p',
@@ -27,7 +27,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k',
 });
 
-// Rota para gerar assinatura de upload direto (MAIS RÁPIDO)
+// Rota para gerar assinatura de upload direto (Mantida caso use no Front)
 app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   try {
     const timestamp = Math.round(Date.now() / 1000);
@@ -38,7 +38,7 @@ app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
         folder: 'equivale_logos',
         quality: 'auto',
         fetch_format: 'auto',
-        max_file_size: 10485760, // 10MB em bytes
+        max_file_size: 10485760,
       },
       process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k'
     );
@@ -55,25 +55,20 @@ app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   }
 });
 
-// Configuração de storage com otimizações
+// SOLUÇÃO DO CONFLITO: Armazenamento simplificado e direto para evitar erros de Invalid Signature e lentidão
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: 'equivale_logos',
     allowed_formats: ['jpg', 'png', 'jpeg'],
-    quality: 'auto',
-    fetch_format: 'auto',
-    eager: [
-      { width: 500, height: 500, crop: 'limit', quality: 'auto', fetch_format: 'auto' }
-    ],
-    eager_async: true, // Processar transformações de forma assíncrona
+    // Removido parâmetros de 'eager' assíncronos que barravam a assinatura nas contas free
   },
 });
 
 const upload = multer({ 
   storage,
   limits: { 
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 10 * 1024 * 1024, // Limite de 10MB
   },
   fileFilter: (req, file, cb) => {
     const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
@@ -218,7 +213,7 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
   console.log('[UPLOAD] ⏱️  Iniciando upload via Multer...');
   const startTime = Date.now();
 
-  // Timeout de 25 segundos apenas para upload
+  // Timeout preventivo de 25 segundos
   const uploadTimeout = setTimeout(() => {
     console.error('[UPLOAD] ❌ Timeout no upload (>25s)');
     if (!res.headersSent) {
@@ -231,7 +226,6 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
     const uploadTime = Date.now() - startTime;
     console.log(`[UPLOAD] ✏️  Multer processou em ${uploadTime}ms`);
 
-    // Erro do Multer
     if (err) {
       console.error(`[UPLOAD] ❌ Erro do Multer (${uploadTime}ms):`, err.message);
       
@@ -253,7 +247,6 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
       });
     }
 
-    // Validar arquivo
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo de imagem foi enviado.' });
     }
@@ -266,7 +259,6 @@ app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
     });
 
     try {
-      // Extrair URL com fallbacks
       const logoUrl = req.file.path || req.file.secure_url || req.file.url || null;
 
       if (!logoUrl) {
@@ -435,7 +427,7 @@ app.get("/api/sugestoes", async (req, res) => {
     if (resultados.length === 0) return res.status(404).json({ error: "Nenhum alimento encontrado" });
     res.json({ sugestoes: resultados });
   } catch (error) {
-    console.error("Erro ao buscar sugestões:", error);
+    console.error("Erro ao buscar suggestions:", error);
     res.status(500).json({ error: "Erro interno no servidor" });
   }
 });
@@ -456,8 +448,8 @@ app.get("/api/equivalencia", async (req, res) => {
       baseQuantity,
       substituteFood,
       equivalentQuantity: equivalentQuantity.toFixed(2),
-      baseGroup: base.group,
-      substituteGroup: substitute.group,
+      baseGroup: base.grupo,
+      substituteGroup: substitute.grupo,
     });
   } catch (error) {
     console.error("Erro ao buscar equivalência:", error);
