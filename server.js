@@ -10,29 +10,10 @@ const cloudinary = require("cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const app = express();
-const prisma = new PrismaClient({
-  // Otimizações de conexão
-  log: ['error', 'warn'],
-});
+const prisma = new PrismaClient();
 
-// Middleware de CORS mais otimizado
-app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-// Timeout global para requisições lentas
-app.use((req, res, next) => {
-  // 30 segundos de timeout
-  req.setTimeout(30000);
-  res.setTimeout(30000);
-  next();
-});
+app.use(cors());
+app.use(express.json());
 
 // Chave secreta para criptografia do Token JWT
 const JWT_SECRET = process.env.JWT_SECRET || "chave_secreta_padrao_equivale_saas";
@@ -44,32 +25,20 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dpop2y72p',
   api_key: process.env.CLOUDINARY_API_KEY || '747585153614338',
   api_secret: process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k',
-  timeout: 30000, // Timeout do Cloudinary
 });
 
-// Configuração de storage otimizada
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: 'equivale_logos',
     allowed_formats: ['jpg', 'png', 'jpeg'],
-    resource_type: 'auto',
-    eager: [], // Não fazer transformações durante upload
   },
 });
 
 const upload = multer({ 
   storage,
   limits: { 
-    fileSize: 10 * 1024 * 1024, // 10MB
-  },
-  fileFilter: (req, file, cb) => {
-    // Validação rápida do tipo de arquivo
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
-    if (!allowedMimes.includes(file.mimetype)) {
-      return cb(new Error('Apenas JPG, JPEG e PNG são permitidos'));
-    }
-    cb(null, true);
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
 });
 
@@ -83,11 +52,6 @@ const tabelas = [
   "sementes",
   "verduras__hortali_as_e_derivados",
 ];
-
-// Cache simples para alimentos (5 minutos)
-let alimentosCache = {};
-let cacheExpiry = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 
 // Rota raiz para teste simples
 app.get("/", (req, res) => {
@@ -110,12 +74,6 @@ app.post("/api/auth/register", async (req, res) => {
 
     if (!nome || !email || !senha) {
       return res.status(400).json({ error: "Nome, e-mail e senha são obrigatórios." });
-    }
-
-    // Validação básica de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: "E-mail inválido." });
     }
 
     const usuarioExiste = await prisma.nutricionistas.findUnique({ where: { email } });
@@ -401,28 +359,16 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
 
 async function buscarAlimento(nomeAlimento) {
   const nomeLower = nomeAlimento.toLowerCase().trim();
-  
   for (const tabela of tabelas) {
     try {
-      // Usar where para filtrar no banco, não em memória
       const alimentos = await prisma[tabela].findMany({
-        where: { 
-          Alimento: { 
-            contains: nomeLower,
-            mode: 'insensitive' // Case-insensitive search
-          } 
-        },
-        select: { 
-          Alimento: true, 
-          Energia__Kcal_: true, 
-          Quantidade__g_: true 
-        },
-        take: 1, // Pegar apenas o primeiro
+        select: { Alimento: true, Energia__Kcal_: true, Quantidade__g_: true },
       });
-      
-      if (alimentos && alimentos.length > 0) {
-        return { ...alimentos[0], group: tabela };
-      }
+      if (!alimentos || alimentos.length === 0) continue;
+      const alimentoEncontrado = alimentos.find((alimento) =>
+        alimento.Alimento && alimento.Alimento.toLowerCase().includes(nomeLower)
+      );
+      if (alimentoEncontrado) return { ...alimentoEncontrado, group: tabela };
     } catch (error) {
       console.error(`Erro ao buscar na tabela ${tabela}:`, error);
     }
@@ -431,43 +377,21 @@ async function buscarAlimento(nomeAlimento) {
 }
 
 app.get("/api/sugestoes", async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.status(400).json({ error: "O parâmetro 'query' é obrigatório" });
+  const nomeLower = query.toLowerCase().trim();
+  let resultados = [];
   try {
-    const { query } = req.query;
-    if (!query) return res.status(400).json({ error: "O parâmetro 'query' é obrigatório" });
-    
-    const nomeLower = query.toLowerCase().trim();
-    let resultados = [];
-    
-    // Limitar a buscas em paralelo para melhor performance
-    const promessas = tabelas.map(async (tabela) => {
-      try {
-        const alimentos = await prisma[tabela].findMany({
-          where: { 
-            Alimento: { 
-              contains: nomeLower,
-              mode: 'insensitive'
-            } 
-          },
-          select: { Alimento: true },
-          take: 5, // Reduzido de 10 para 5
-        });
-        return alimentos.map((a) => a.Alimento);
-      } catch (error) {
-        console.error(`Erro ao buscar sugestões na tabela ${tabela}:`, error);
-        return [];
-      }
-    });
-    
-    const resultadosPorTabela = await Promise.all(promessas);
-    resultados = resultadosPorTabela.flat();
-    
-    if (resultados.length === 0) {
-      return res.status(404).json({ error: "Nenhum alimento encontrado" });
+    for (const tabela of tabelas) {
+      const alimentos = await prisma[tabela].findMany({
+        where: { Alimento: { contains: nomeLower } },
+        select: { Alimento: true },
+        take: 10,
+      });
+      resultados = [...resultados, ...alimentos.map((a) => a.Alimento)];
     }
-    
-    // Remover duplicatas
-    const resultadosUnicos = [...new Set(resultados)];
-    res.json({ sugestoes: resultadosUnicos.slice(0, 20) }); // Máximo 20 resultados
+    if (resultados.length === 0) return res.status(404).json({ error: "Nenhum alimento encontrado" });
+    res.json({ sugestoes: resultados });
   } catch (error) {
     console.error("Erro ao buscar sugestões:", error);
     res.status(500).json({ error: "Erro interno no servidor" });
@@ -475,32 +399,16 @@ app.get("/api/sugestoes", async (req, res) => {
 });
 
 app.get("/api/equivalencia", async (req, res) => {
+  const { baseFood, baseQuantity, substituteFood } = req.query;
+  if (!baseFood || !baseQuantity || !substituteFood) return res.status(400).json({ error: "Parâmetros inválidos" });
   try {
-    const { baseFood, baseQuantity, substituteFood } = req.query;
-    
-    if (!baseFood || !baseQuantity || !substituteFood) {
-      return res.status(400).json({ error: "Parâmetros inválidos" });
-    }
-    
-    // Buscar em paralelo
-    const [base, substitute] = await Promise.all([
-      buscarAlimento(baseFood),
-      buscarAlimento(substituteFood)
-    ]);
-    
-    if (!base || !substitute) {
-      return res.status(404).json({ error: "Alimento não encontrado" });
-    }
-    
+    const base = await buscarAlimento(baseFood);
+    const substitute = await buscarAlimento(substituteFood);
+    if (!base || !substitute) return res.status(404).json({ error: "Alimento não encontrado" });
     const baseCalories = base.Energia__Kcal_ || base.Calorias || base.Kcal;
     const substituteCalories = substitute.Energia__Kcal_ || substitute.Calorias || substitute.Kcal;
-    
-    if (!baseCalories || !substituteCalories) {
-      return res.status(500).json({ error: "Erro ao obter calorias dos alimentos" });
-    }
-    
+    if (!baseCalories || !substituteCalories) return res.status(500).json({ error: "Erro ao obter calorias dos alimentos" });
     const equivalentQuantity = (baseQuantity * baseCalories) / substituteCalories;
-    
     res.json({
       baseFood,
       baseQuantity,
@@ -516,28 +424,16 @@ app.get("/api/equivalencia", async (req, res) => {
 });
 
 async function testDatabase() {
-  console.log("[DB] Testando conexões com banco de dados...");
   for (const tabela of tabelas) {
     try {
       await prisma[tabela].findFirst();
       console.log(`✅ Conexão com ${tabela} bem-sucedida!`);
     } catch (error) {
-      console.error(`❌ Erro ao conectar com ${tabela}:`, error.message);
+      console.error(`❌ Erro ao conectar com ${tabela}:`, error);
     }
   }
 }
 testDatabase();
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM recebido, fechando servidor...');
-  prisma.$disconnect().then(() => process.exit(0));
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT recebido, fechando servidor...');
-  prisma.$disconnect().then(() => process.exit(0));
-});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
