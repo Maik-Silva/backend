@@ -27,11 +27,46 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k',
 });
 
+// Rota para gerar assinatura de upload direto (MAIS RÁPIDO)
+app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
+  try {
+    const timestamp = Math.round(Date.now() / 1000);
+    
+    const signature = cloudinary.utils.api_sign_request(
+      {
+        timestamp: timestamp,
+        folder: 'equivale_logos',
+        quality: 'auto',
+        fetch_format: 'auto',
+        max_file_size: 10485760, // 10MB em bytes
+      },
+      process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k'
+    );
+
+    res.json({
+      signature,
+      timestamp,
+      api_key: process.env.CLOUDINARY_API_KEY || '747585153614338',
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dpop2y72p',
+    });
+  } catch (error) {
+    console.error('[SIGNATURE] Erro ao gerar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao gerar assinatura de upload' });
+  }
+});
+
+// Configuração de storage com otimizações
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: 'equivale_logos',
     allowed_formats: ['jpg', 'png', 'jpeg'],
+    quality: 'auto',
+    fetch_format: 'auto',
+    eager: [
+      { width: 500, height: 500, crop: 'limit', quality: 'auto', fetch_format: 'auto' }
+    ],
+    eager_async: true, // Processar transformações de forma assíncrona
   },
 });
 
@@ -39,6 +74,13 @@ const upload = multer({
   storage,
   limits: { 
     fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedMimes.includes(file.mimetype)) {
+      return cb(new Error('Apenas JPG, JPEG e PNG são permitidos'));
+    }
+    cb(null, true);
   },
 });
 
@@ -170,10 +212,10 @@ function verificarToken(req, res, next) {
 }
 
 // ==========================================
-//        ROTA EXCLUSIVA DE UPLOAD DE LOGO
+//        ROTA EXCLUSIVA DE UPLOAD DE LOGO (MULTER)
 // ==========================================
 app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
-  console.log('[UPLOAD] ⏱️  Iniciando upload...');
+  console.log('[UPLOAD] ⏱️  Iniciando upload via Multer...');
   const startTime = Date.now();
 
   // Timeout de 25 segundos apenas para upload
