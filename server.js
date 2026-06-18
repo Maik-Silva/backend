@@ -205,7 +205,7 @@ function verificarToken(req, res, next) {
 }
 
 // ==========================================
-//        ROTA EXCLUSIVA DE UPLOAD DE LOGO (MULTER)
+//    ROTA EXCLUSIVA DE UPLOAD DE LOGO (MULTER)
 // ==========================================
 app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
   console.log('[UPLOAD] ⏱️  Iniciando upload via Multer...');
@@ -330,7 +330,8 @@ app.get("/api/pacientes", verificarToken, async (req, res) => {
 app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
   try {
     const nutricionista_id = req.nutri.id;
-    const { especialidade, whatsapp, instagram, logo_url, nome } = req.body;
+    // Alterado para desestruturar também o campo 'crn' enviado pelo front-end
+    const { especialidade, whatsapp, instagram, logo_url, nome, crn } = req.body;
 
     const nutriAtualizado = await prisma.nutricionistas.update({
       where: { id: nutricionista_id },
@@ -340,6 +341,7 @@ app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
         whatsapp: whatsapp || null,
         instagram: instagram || null,
         logo_url: logo_url || null,
+        crn: crn || null, // Alterado para persistir o CRN corretamente no MySQL
       },
     });
 
@@ -349,6 +351,7 @@ app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
         id: nutriAtualizado.id,
         nome: nutriAtualizado.nome,
         email: nutriAtualizado.email,
+        crn: nutriAtualizado.crn, // Incluído no retorno para sincronização correta do front-end
         especialidade: nutriAtualizado.especialidade,
         whatsapp: nutriAtualizado.whatsapp,
         instagram: nutriAtualizado.instagram,
