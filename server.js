@@ -28,8 +28,10 @@ cloudinary.config({
 });
 
 // ==========================================
-//    MIDDLEWARE DE PROTEÇÃO DE ROTAS (JWT)
+//    MIDDLEWARES DE PROTEÇÃO DE ROTAS (JWT)
 // ==========================================
+
+// Middleware para Nutricionistas
 function verificarToken(req, res, next) {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
@@ -40,7 +42,31 @@ function verificarToken(req, res, next) {
 
   try {
     const verificado = jwt.verify(token, JWT_SECRET);
+    if (verificado.role === 'paciente') {
+      return res.status(403).json({ error: "Acesso negado. Esta rota é exclusiva para nutricionistas." });
+    }
     req.nutri = verificado;
+    next();
+  } catch (error) {
+    return res.status(403).json({ error: "Sessão expirada ou token inválido. Faça login novamente." });
+  }
+}
+
+// Middleware para Pacientes
+function verificarTokenPaciente(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "Acesso negado. Faça login para continuar." });
+  }
+
+  try {
+    const verificado = jwt.verify(token, JWT_SECRET);
+    if (verificado.role !== 'paciente') {
+      return res.status(403).json({ error: "Acesso inválido. Esta rota é exclusiva para pacientes." });
+    }
+    req.paciente = verificado;
     next();
   } catch (error) {
     return res.status(403).json({ error: "Sessão expirada ou token inválido. Faça login novamente." });
@@ -106,7 +132,7 @@ const tabelas = [
 ];
 
 app.get("/", (req, res) => {
-  res.send("Backend online com Upload de Imagens! 🚀");
+  res.send("Backend online com Área do Paciente! 🚀");
 });
 
 // ==========================================
@@ -176,7 +202,7 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: nutri.id, email: nutri.email },
+      { id: nutri.id, email: nutri.email, role: 'nutri' },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -197,7 +223,7 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// ROTA NOVA: ALTERAÇÃO DE SENHA DO NUTRICIONISTA
+// ALTERAÇÃO DE SENHA DO NUTRICIONISTA
 app.post("/api/nutri/alterar-senha", verificarToken, async (req, res) => {
   try {
     const nutricionista_id = req.nutri.id;
@@ -223,10 +249,98 @@ app.post("/api/nutri/alterar-senha", verificarToken, async (req, res) => {
 });
 
 // ==========================================
+//          AUTENTICAÇÃO DO PACIENTE
+// ==========================================
+
+app.post("/api/auth/login-paciente", async (req, res) => {
+  try {
+    const { email, senha } = req.body;
+
+    if (!email || !senha) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+    }
+
+    // Procura o paciente pelo e-mail
+    const paciente = await prisma.pacientes.findUnique({ 
+      where: { email: email.trim().toLowerCase() } 
+    });
+
+    if (!paciente) {
+      return res.status(400).json({ error: "Credenciais inválidas. Verifique seu e-mail e senha." });
+    }
+
+    // Compara a senha (que por padrão é o número do telefone limpo)
+    const senhaCorreta = await bcrypt.compare(senha, paciente.senha_hash);
+    if (!senhaCorreta) {
+      return res.status(400).json({ error: "Credenciais inválidas. Verifique seu e-mail e senha." });
+    }
+
+    // Gera o Token JWT contendo a flag 'paciente'
+    const token = jwt.sign(
+      { id: paciente.id, email: paciente.email, role: 'paciente' },
+      JWT_SECRET,
+      { expiresIn: "30d" } // Token de paciente dura mais para evitar deslogar no celular
+    );
+
+    res.json({
+      token,
+      paciente: {
+        id: paciente.id,
+        nome: paciente.nome,
+        email: paciente.email,
+        telefone: paciente.telefone,
+      },
+    });
+  } catch (error) {
+    console.error("Erro no login do paciente:", error);
+    res.status(500).json({ error: "Erro interno ao realizar login do paciente." });
+  }
+});
+
+// Rota de Perfil Exclusiva do Paciente (Para puxar os dados dele + marca do nutri)
+app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
+  try {
+    const paciente_id = req.paciente.id;
+
+    const dadosPaciente = await prisma.pacientes.findUnique({
+      where: { id: paciente_id },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        telefone: true,
+        data_nascimento: true,
+        observacoes: true,
+        // Traz as informações de personalização e marca do Nutricionista dele
+        nutricionista: {
+          select: {
+            nome: true,
+            crn: true,
+            especialidade: true,
+            whatsapp: true,
+            instagram: true,
+            logo_url: true,
+          }
+        }
+      }
+    });
+
+    if (!dadosPaciente) {
+      return res.status(404).json({ error: "Paciente não encontrado." });
+    }
+
+    res.json(dadosPaciente);
+  } catch (error) {
+    console.error("Erro ao buscar perfil do paciente:", error);
+    res.status(500).json({ error: "Erro interno ao buscar dados do paciente." });
+  }
+});
+
+// ==========================================
 //    ROTA EXCLUSIVA DE UPLOAD DE LOGO (MULTER)
 // ==========================================
 app.post('/api/nutri/upload-logo', verificarToken, (req, res) => {
-  console.log('[UPLOAD] ⏱️  Iniciando upload via Multer...');
+  console.log('[UPLOAD] ⏱  Iniciando upload via Multer...');
   const startTime = Date.now();
 
   const uploadTimeout = setTimeout(() => {
