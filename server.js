@@ -28,7 +28,7 @@ cloudinary.config({
 });
 
 // ==========================================
-//    MIDDLEWARES DE PROTEÇÃO DE ROTAS (JWT)
+//     MIDDLEWARES DE PROTEÇÃO DE ROTAS (JWT)
 // ==========================================
 
 // Middleware para Nutricionistas
@@ -136,7 +136,7 @@ app.get("/", (req, res) => {
 });
 
 // ==========================================
-//          ROTAS DE AUTENTICAÇÃO
+//           ROTAS DE AUTENTICAÇÃO
 // ==========================================
 
 app.post("/api/auth/register", async (req, res) => {
@@ -415,7 +415,9 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
       },
     });
 
-    const urlAcesso = `https://equivale-saas.vercel.app/login?usuario=${encodeURIComponent(novoPaciente.email)}`;
+    // SISTEMA DE URL INTELIGENTE: Pega o link do Netlify cadastrado no Railway, ou usa o padrão
+    const frontendUrl = process.env.FRONTEND_URL || "https://seu-app-no-netlify.netlify.app";
+    const urlAcesso = `${frontendUrl}/login?usuario=${encodeURIComponent(novoPaciente.email)}`;
 
     res.status(201).json({ 
       message: "Paciente cadastrado com sucesso!", 
@@ -495,7 +497,7 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
 });
 
 // ==========================================
-//      ROTAS DE PERSONALIZAÇÃO DO PERFIL
+//       ROTAS DE PERSONALIZAÇÃO DO PERFIL
 // ==========================================
 
 app.put("/api/nutri/perfil", verificarToken, async (req, res) => {
