@@ -132,7 +132,7 @@ const tabelas = [
 ];
 
 app.get("/", (req, res) => {
-  res.send("Backend online com Área do Paciente! 🚀");
+  res.send("Backend online com Área do Paciente via Telefone! 🚀");
 });
 
 // ==========================================
@@ -249,37 +249,42 @@ app.post("/api/nutri/alterar-senha", verificarToken, async (req, res) => {
 });
 
 // ==========================================
-//          AUTENTICAÇÃO DO PACIENTE
+//    AUTENTICAÇÃO DO PACIENTE (NOVA LÓGICA)
 // ==========================================
 
 app.post("/api/auth/login-paciente", async (req, res) => {
   try {
-    const { email, senha } = req.body;
+    const { telefone, data_nascimento } = req.body;
 
-    if (!email || !senha) {
-      return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+    if (!telefone || !data_nascimento) {
+      return res.status(400).json({ error: "Telefone e Data de Nascimento são obrigatórios." });
     }
 
-    // Procura o paciente pelo e-mail
-    const paciente = await prisma.pacientes.findUnique({ 
-      where: { email: email.trim().toLowerCase() } 
+    // Limpa o telefone vindo do front (remove parênteses, espaços e traços)
+    const telefoneLimpo = telefone.replace(/\D/g, "");
+
+    // Busca o primeiro paciente que tenha esse número de telefone limpo
+    const paciente = await prisma.pacientes.findFirst({ 
+      where: { telefone: telefoneLimpo } 
     });
 
     if (!paciente) {
-      return res.status(400).json({ error: "Credenciais inválidas. Verifique seu e-mail e senha." });
+      return res.status(400).json({ error: "Dados inválidos. Verifique seu telefone e data de nascimento." });
     }
 
-    // Compara a senha (que por padrão é o número do telefone limpo)
-    const senhaCorreta = await bcrypt.compare(senha, paciente.senha_hash);
-    if (!senhaCorreta) {
-      return res.status(400).json({ error: "Credenciais inválidas. Verifique seu e-mail e senha." });
+    // Compara as datas de nascimento formatadas em YYYY-MM-DD para evitar fuso horário
+    const dataInput = new Date(data_nascimento).toISOString().split('T')[0];
+    const dataBanco = new Date(paciente.data_nascimento).toISOString().split('T')[0];
+
+    if (dataInput !== dataBanco) {
+      return res.status(400).json({ error: "Dados inválidos. Verifique seu telefone e data de nascimento." });
     }
 
-    // Gera o Token JWT contendo a flag 'paciente'
+    // Gera o Token JWT contendo a flag 'paciente' válido por 30 dias
     const token = jwt.sign(
       { id: paciente.id, email: paciente.email, role: 'paciente' },
       JWT_SECRET,
-      { expiresIn: "30d" } // Token de paciente dura mais para evitar deslogar no celular
+      { expiresIn: "30d" }
     );
 
     res.json({
@@ -287,7 +292,6 @@ app.post("/api/auth/login-paciente", async (req, res) => {
       paciente: {
         id: paciente.id,
         nome: paciente.nome,
-        email: paciente.email,
         telefone: paciente.telefone,
       },
     });
@@ -404,7 +408,7 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
         nutricionista_id,
         nome,
         email: email.trim().toLowerCase(),
-        telefone,
+        telefone: senhaPura, // Salva o telefone limpo para padronizar
         senha_hash, 
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
@@ -455,13 +459,13 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
       data: {
         nome,
         email: email ? email.trim().toLowerCase() : undefined,
-        telefone,
+        telefone: telefone ? telefone.replace(/\D/g, "") : undefined,
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
       },
     });
 
-    res.json({ message: "Dados do paciente atualizados com sucesso!", paciente: pacienteAtualizado });
+    res.json({ message: "Dados do paciente updated com sucesso!", paciente: pacienteAtualizado });
   } catch (error) {
     console.error("Erro ao atualizar paciente:", error);
     if (error.code === 'P2002') {
