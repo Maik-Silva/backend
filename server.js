@@ -157,7 +157,7 @@ app.get("/", (req, res) => {
 });
 
 // ==========================================
-//            ROTAS DE AUTENTICAÇÃO
+//             ROTAS DE AUTENTICAÇÃO
 // ==========================================
 
 app.post("/api/auth/register", async (req, res) => {
@@ -397,7 +397,7 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
 });
 
 // ==========================================
-//     ROTAS EXCLUSIVAS DO PAINEL ADMIN
+//       ROTAS EXCLUSIVAS DO PAINEL ADMIN
 // ==========================================
 
 app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
@@ -407,7 +407,7 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
     const totalPacientes = await prisma.pacientes.count();
     const totalAcessos = await prisma.logs_acesso.count();
 
-    // 2. Lista de Nutricionistas com a contagem de pacientes vinculados (Para monitorar o limite de 5 do Beta)
+    // 2. Busca os nutricionistas da tabela correta do banco
     const nutrisLista = await prisma.nutricionistas.findMany({
       select: {
         id: true,
@@ -420,8 +420,8 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       orderBy: { nome: 'asc' }
     });
 
-    // Formata os dados para o frontend esperar a contagem correta
-    const nutricionistas Formatados = nutrisLista.map(nutri => ({
+    // Mapeamento corrigido: sem espaços e estruturalmente alinhado
+    const nutricionistasFormatados = nutrisLista.map(nutri => ({
       id: nutri.id,
       nome: nutri.nome,
       email: nutri.email,
