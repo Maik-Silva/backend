@@ -98,13 +98,23 @@ model pacientes {
   id               Int            @id @default(autoincrement())
   nutricionista_id Int
   nome             String
-  email            String         @unique // Modificado: Agora é obrigatório e único (previne e-mails duplicados)
-  telefone         String         // Modificado: Obrigatório para criar a senha inicial baseada nos dígitos
-  senha_hash       String         // ADICIONADO: Campo crucial que estava faltando para autenticar o paciente
+  email            String         @unique
+  telefone         String
+  senha_hash       String
   data_nascimento  DateTime?
   observacoes      String?        @db.Text
   created_at       DateTime       @default(now())
   updated_at       DateTime       @updatedAt
 
   nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
+}
+
+// ADICIONADO: Modelo correspondente à tabela física administradores do banco de dados
+model administradores {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  email      String   @unique
+  senha_hash String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
