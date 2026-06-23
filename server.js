@@ -244,22 +244,30 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// LOGIN EXCLUSIVO DO ADMINISTRADOR
+// LOGIN EXCLUSIVO DO ADMINISTRADOR (CORRIGIDO E BLINDADO)
 app.post("/api/auth/login-admin", async (req, res) => {
   try {
-    const { email, senha } = req.body;
+    const { email, senha, password } = req.body;
 
-    if (!email || !senha) {
+    // Aceita tanto "senha" quanto "password" vindo do front-end
+    const senhaFinal = senha || password;
+
+    if (!email || !senhaFinal) {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
     }
 
-    const admin = await prisma.administradores.findUnique({ where: { email } });
+    // Remove espaços e força minúsculas para evitar falhas estruturais de digitação
+    const emailLimpo = email.trim().toLowerCase();
+
+    const admin = await prisma.administradores.findUnique({ where: { email: emailLimpo } });
     if (!admin) {
+      console.log(`[ADMIN] ❌ E-mail não encontrado: ${emailLimpo}`);
       return res.status(400).json({ error: "Credenciais de administrador inválidas." });
     }
 
-    const senhaCorreta = await bcrypt.compare(senha, admin.senha_hash);
+    const senhaCorreta = await bcrypt.compare(senhaFinal, admin.senha_hash);
     if (!senhaCorreta) {
+      console.log(`[ADMIN] ❌ Senha incorreta para o administrador: ${emailLimpo}`);
       return res.status(400).json({ error: "Credenciais de administrador inválidas." });
     }
 
@@ -397,7 +405,7 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
 });
 
 // ==========================================
-//       ROTAS EXCLUSIVAS DO PAINEL ADMIN
+//        ROTAS EXCLUSIVAS DO PAINEL ADMIN
 // ==========================================
 
 app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
@@ -686,7 +694,7 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
 });
 
 // ==========================================
-//          ROTAS ALIMENTARES EXISTENTES
+//           ROTAS ALIMENTARES EXISTENTES
 // ==========================================
 
 async function buscarAlimento(nomeAlimento) {
