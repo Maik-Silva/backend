@@ -107,9 +107,9 @@ model pacientes {
   updated_at       DateTime       @updatedAt
 
   nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
+  logs_acesso      logs_acesso[]  // ← Relação adicionada para os logs de acesso
 }
 
-// ADICIONADO: Modelo correspondente à tabela física administradores do banco de dados
 model administradores {
   id         Int      @id @default(autoincrement())
   nome       String
@@ -117,4 +117,12 @@ model administradores {
   senha_hash String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+}
+
+// Novo modelo adicionado para registrar os acessos dos pacientes
+model logs_acesso {
+  id           Int       @id @default(autoincrement())
+  paciente_id  Int
+  data_acesso  DateTime  @default(now())
+  paciente     pacientes @relation(fields: [paciente_id], references: [id], onDelete: Cascade)
 }
