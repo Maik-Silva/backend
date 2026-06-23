@@ -244,32 +244,46 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// LOGIN EXCLUSIVO DO ADMINISTRADOR (CORRIGIDO E BLINDADO)
+// LOGIN EXCLUSIVO DO ADMINISTRADOR COM LOGS DE DEPURAÇÃO
 app.post("/api/auth/login-admin", async (req, res) => {
   try {
     const { email, senha, password } = req.body;
-
-    // Aceita tanto "senha" quanto "password" vindo do front-end
     const senhaFinal = senha || password;
+
+    // LOG 1: Verificar o exato payload enviado pelo front-end
+    console.log("[DEBUG ADMIN] Dados recebidos no body:", { 
+      email, 
+      temSenha: !!senha, 
+      temPassword: !!password,
+      senhaFinalUsada: senhaFinal 
+    });
 
     if (!email || !senhaFinal) {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
     }
 
-    // Remove espaços e força minúsculas para evitar falhas estruturais de digitação
     const emailLimpo = email.trim().toLowerCase();
+    console.log("[DEBUG ADMIN] E-mail após limpeza:", emailLimpo);
 
     const admin = await prisma.administradores.findUnique({ where: { email: emailLimpo } });
+    
+    // LOG 2: Testar se o registro do e-mail existe na tabela MySQL
     if (!admin) {
-      console.log(`[ADMIN] ❌ E-mail não encontrado: ${emailLimpo}`);
+      console.log(`[DEBUG ADMIN] ❌ E-mail NÃO encontrado no banco: ${emailLimpo}`);
+      return res.status(400).json({ error: "Credenciais de administrador inválidas." });
+    }
+    
+    console.log("[DEBUG ADMIN] ✅ Administrador encontrado no banco. Hash registrado:", admin.senha_hash);
+
+    const senhaCorreta = await bcrypt.compare(senhaFinal, admin.senha_hash);
+    
+    // LOG 3: Validar o resultado do validador Bcrypt
+    if (!senhaCorreta) {
+      console.log(`[DEBUG ADMIN] ❌ Bcrypt REJEITOU a senha. Texto puro testado: "${senhaFinal}"`);
       return res.status(400).json({ error: "Credenciais de administrador inválidas." });
     }
 
-    const senhaCorreta = await bcrypt.compare(senhaFinal, admin.senha_hash);
-    if (!senhaCorreta) {
-      console.log(`[ADMIN] ❌ Senha incorreta para o administrador: ${emailLimpo}`);
-      return res.status(400).json({ error: "Credenciais de administrador inválidas." });
-    }
+    console.log("[DEBUG ADMIN] 🎉 Login bem-sucedido! Gerando token...");
 
     const token = jwt.sign(
       { id: admin.id, email: admin.email, role: 'admin' },
@@ -428,7 +442,6 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       orderBy: { nome: 'asc' }
     });
 
-    // Mapeamento corrigido: sem espaços e estruturalmente alinhado
     const nutricionistasFormatados = nutrisLista.map(nutri => ({
       id: nutri.id,
       nome: nutri.nome,
@@ -524,7 +537,6 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
       return res.status(400).json({ error: "Nome, E-mail, Telefone e Data de Nascimento são obrigatórios." });
     }
 
-    // TRAVA DO PLANO BETA: Impede o nutri de cadastrar se já tiver 5 pacientes ativos
     const contagemPacientes = await prisma.pacientes.count({
       where: { nutricionista_id }
     });
