@@ -73,6 +73,27 @@ function verificarTokenPaciente(req, res, next) {
   }
 }
 
+// Middleware para Administradores
+function verificarTokenAdmin(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "Acesso negado. Rota restrita ao administrador." });
+  }
+
+  try {
+    const verificado = jwt.verify(token, JWT_SECRET);
+    if (verificado.role !== 'admin') {
+      return res.status(403).json({ error: "Acesso proibido. Apenas administradores podem acessar." });
+    }
+    req.admin = verificado;
+    next();
+  } catch (error) {
+    return res.status(403).json({ error: "Sessão inválida ou expirada." });
+  }
+}
+
 // Rota para gerar assinatura de upload direto
 app.post('/api/nutri/upload-signature', verificarToken, (req, res) => {
   try {
@@ -136,7 +157,7 @@ app.get("/", (req, res) => {
 });
 
 // ==========================================
-//           ROTAS DE AUTENTICAÇÃO
+//            ROTAS DE AUTENTICAÇÃO
 // ==========================================
 
 app.post("/api/auth/register", async (req, res) => {
@@ -223,6 +244,41 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+// LOGIN EXCLUSIVO DO ADMINISTRADOR
+app.post("/api/auth/login-admin", async (req, res) => {
+  try {
+    const { email, senha } = req.body;
+
+    if (!email || !senha) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+    }
+
+    const admin = await prisma.administradores.findUnique({ where: { email } });
+    if (!admin) {
+      return res.status(400).json({ error: "Credenciais de administrador inválidas." });
+    }
+
+    const senhaCorreta = await bcrypt.compare(senha, admin.senha_hash);
+    if (!senhaCorreta) {
+      return res.status(400).json({ error: "Credenciais de administrador inválidas." });
+    }
+
+    const token = jwt.sign(
+      { id: admin.id, email: admin.email, role: 'admin' },
+      JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({
+      token,
+      admin: { id: admin.id, nome: admin.nome, email: admin.email }
+    });
+  } catch (error) {
+    console.error("Erro no login do admin:", error);
+    res.status(500).json({ error: "Erro interno ao realizar login do admin." });
+  }
+});
+
 // ALTERAÇÃO DE SENHA DO NUTRICIONISTA
 app.post("/api/nutri/alterar-senha", verificarToken, async (req, res) => {
   try {
@@ -249,7 +305,7 @@ app.post("/api/nutri/alterar-senha", verificarToken, async (req, res) => {
 });
 
 // ==========================================
-//    AUTENTICAÇÃO DO PACIENTE (NOVA LÓGICA)
+//    AUTENTICAÇÃO DO PACIENTE + GERAR LOG
 // ==========================================
 
 app.post("/api/auth/login-paciente", async (req, res) => {
@@ -260,10 +316,8 @@ app.post("/api/auth/login-paciente", async (req, res) => {
       return res.status(400).json({ error: "Telefone e Data de Nascimento são obrigatórios." });
     }
 
-    // Limpa o telefone vindo do front (remove parênteses, espaços e traços)
     const telefoneLimpo = telefone.replace(/\D/g, "");
 
-    // Busca o primeiro paciente que tenha esse número de telefone limpo
     const paciente = await prisma.pacientes.findFirst({ 
       where: { telefone: telefoneLimpo } 
     });
@@ -272,7 +326,6 @@ app.post("/api/auth/login-paciente", async (req, res) => {
       return res.status(400).json({ error: "Dados inválidos. Verifique seu telefone e data de nascimento." });
     }
 
-    // Compara as datas de nascimento formatadas em YYYY-MM-DD para evitar fuso horário
     const dataInput = new Date(data_nascimento).toISOString().split('T')[0];
     const dataBanco = new Date(paciente.data_nascimento).toISOString().split('T')[0];
 
@@ -280,7 +333,11 @@ app.post("/api/auth/login-paciente", async (req, res) => {
       return res.status(400).json({ error: "Dados inválidos. Verifique seu telefone e data de nascimento." });
     }
 
-    // Gera o Token JWT contendo a flag 'paciente' válido por 30 dias
+    // REGISTRA O LOG DE ACESSO NO BANCO DE DADOS AUTOMATICAMENTE
+    await prisma.logs_acesso.create({
+      data: { paciente_id: paciente.id }
+    });
+
     const token = jwt.sign(
       { id: paciente.id, email: paciente.email, role: 'paciente' },
       JWT_SECRET,
@@ -301,7 +358,7 @@ app.post("/api/auth/login-paciente", async (req, res) => {
   }
 });
 
-// Rota de Perfil Exclusiva do Paciente (Para puxar os dados dele + marca do nutri)
+// Rota de Perfil Exclusiva do Paciente
 app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
   try {
     const paciente_id = req.paciente.id;
@@ -315,7 +372,6 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
         telefone: true,
         data_nascimento: true,
         observacoes: true,
-        // Traz as informações de personalização e marca do Nutricionista dele
         nutricionista: {
           select: {
             nome: true,
@@ -337,6 +393,67 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
   } catch (error) {
     console.error("Erro ao buscar perfil do paciente:", error);
     res.status(500).json({ error: "Erro interno ao buscar dados do paciente." });
+  }
+});
+
+// ==========================================
+//     ROTAS EXCLUSIVAS DO PAINEL ADMIN
+// ==========================================
+
+app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
+  try {
+    // 1. Contagens para os cards principais
+    const totalNutris = await prisma.nutricionistas.count();
+    const totalPacientes = await prisma.pacientes.count();
+    const totalAcessos = await prisma.logs_acesso.count();
+
+    // 2. Lista de Nutricionistas com a contagem de pacientes vinculados (Para monitorar o limite de 5 do Beta)
+    const nutrisLista = await prisma.nutricionistas.findMany({
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        _count: {
+          select: { pacientes: true }
+        }
+      },
+      orderBy: { nome: 'asc' }
+    });
+
+    // Formata os dados para o frontend esperar a contagem correta
+    const nutricionistas Formatados = nutrisLista.map(nutri => ({
+      id: nutri.id,
+      nome: nutri.nome,
+      email: nutri.email,
+      totalPacientes: nutri._count.pacientes
+    }));
+
+    // 3. Últimos 10 acessos de pacientes no sistema
+    const acessosRecentes = await prisma.logs_acesso.findMany({
+      take: 10,
+      orderBy: { data_acesso: 'desc' },
+      select: {
+        id: true,
+        data_acesso: true,
+        paciente: {
+          select: {
+            nome: true,
+            nutricionista: {
+              select: { nome: true }
+            }
+          }
+        }
+      }
+    });
+
+    res.json({
+      cards: { totalNutris, totalPacientes, totalAcessos },
+      nutricionistas: nutricionistasFormatados,
+      acessosRecentes
+    });
+  } catch (error) {
+    console.error("Erro ao buscar métricas do admin:", error);
+    res.status(500).json({ error: "Erro interno ao buscar dados do painel admin." });
   }
 });
 
@@ -399,6 +516,15 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
       return res.status(400).json({ error: "Nome, E-mail, Telefone e Data de Nascimento são obrigatórios." });
     }
 
+    // TRAVA DO PLANO BETA: Impede o nutri de cadastrar se já tiver 5 pacientes ativos
+    const contagemPacientes = await prisma.pacientes.count({
+      where: { nutricionista_id }
+    });
+
+    if (contagemPacientes >= 5) {
+      return res.status(403).json({ error: "Limite do plano Beta atingido. Você só pode cadastrar até 5 pacientes." });
+    }
+
     const senhaPura = telefone.replace(/\D/g, ""); 
     const salt = await bcrypt.genSalt(10);
     const senha_hash = await bcrypt.hash(senhaPura, salt);
@@ -408,14 +534,13 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
         nutricionista_id,
         nome,
         email: email.trim().toLowerCase(),
-        telefone: senhaPura, // Salva o telefone limpo para padronizar
+        telefone: senhaPura,
         senha_hash, 
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
       },
     });
 
-    // SISTEMA DE URL INTELIGENTE: Pega o link do Netlify cadastrado no Railway, ou usa o padrão correto
     const frontendUrl = process.env.FRONTEND_URL || "https://plataformaequivale.netlify.app";
     const urlAcesso = `${frontendUrl}/login?usuario=${encodeURIComponent(novoPaciente.email)}`;
 
@@ -467,7 +592,7 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
       },
     });
 
-    res.json({ message: "Dados do paciente atualizados com sucesso!", paciente: pacienteAtualizado });
+    res.json({ message: "Dados do paciente updated com sucesso!", paciente: pacienteAtualizado });
   } catch (error) {
     console.error("Erro ao atualizar paciente:", error);
     if (error.code === 'P2002') {
