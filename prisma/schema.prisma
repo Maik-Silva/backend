@@ -126,3 +126,11 @@ model logs_acesso {
   data_acesso  DateTime  @default(now())
   paciente     pacientes @relation(fields: [paciente_id], references: [id], onDelete: Cascade)
 }
+
+model alimentos_equivale {
+  id             Int    @id @default(autoincrement())
+  Alimento       String
+  Quantidade__g_ Int    @map("Quantidade (g)")
+  Energia__Kcal_ Int    @map("Energia (Kcal)")
+  grupo          String
+}
