@@ -7,6 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Tabela unificada para todos os grupos de alimentos
+model alimentos_equivale {
+  id             Int    @id @default(autoincrement())
+  Alimento       String
+  Quantidade__g_ Int    @map("Quantidade (g)")
+  Energia__Kcal_ Int    @map("Energia (Kcal)")
+  grupo          String
+}
+
+// Modelos antigos (mantidos para não quebrar seu sistema atual)
 model gorduras {
   Alimento       String? @db.Text
   Quantidade__g_ Int?    @map("Quantidade (g)")
@@ -35,13 +45,6 @@ model proteina {
   Quantidade__g_ Int?    @map("Quantidade (g)")
   Energia__Kcal_ Int?    @map("Energia (Kcal)")
   id             Int     @id @default(autoincrement())
-}
-
-model Alimentos {
-  id             Int    @id @default(autoincrement())
-  Alimento       String
-  Quantidade__g_ Int    @map("Quantidade (g)")
-  Energia__Kcal_ Int    @map("Energia (Kcal)")
 }
 
 model frutas {
@@ -76,6 +79,7 @@ model verduras__hortali_as_e_derivados {
   @@map("verduras, hortaliças e derivados")
 }
 
+// Modelos de sistema
 model nutricionistas {
   id            Int      @id @default(autoincrement())
   nome          String
@@ -90,24 +94,22 @@ model nutricionistas {
   ativo         Boolean  @default(true)
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
-
   pacientes     pacientes[]
 }
 
 model pacientes {
-  id               Int            @id @default(autoincrement())
+  id               Int      @id @default(autoincrement())
   nutricionista_id Int
   nome             String
-  email            String         @unique
+  email            String   @unique
   telefone         String
   senha_hash       String
   data_nascimento  DateTime?
-  observacoes      String?        @db.Text
-  created_at       DateTime       @default(now())
-  updated_at       DateTime       @updatedAt
-
+  observacoes      String?  @db.Text
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
   nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
-  logs_acesso      logs_acesso[]  // ← Relação adicionada para os logs de acesso
+  logs_acesso      logs_acesso[]
 }
 
 model administradores {
@@ -119,18 +121,9 @@ model administradores {
   updated_at DateTime @updatedAt
 }
 
-// Novo modelo adicionado para registrar os acessos dos pacientes
 model logs_acesso {
   id           Int       @id @default(autoincrement())
   paciente_id  Int
   data_acesso  DateTime  @default(now())
   paciente     pacientes @relation(fields: [paciente_id], references: [id], onDelete: Cascade)
-}
-
-model alimentos_equivale {
-  id             Int    @id @default(autoincrement())
-  Alimento       String
-  Quantidade__g_ Int    @map("Quantidade (g)")
-  Energia__Kcal_ Int    @map("Energia (Kcal)")
-  grupo          String
 }
