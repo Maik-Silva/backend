@@ -27,7 +27,7 @@ cloudinary.config({
 });
 
 // ==========================================
-//                MIDDLEWARES
+//                 MIDDLEWARES
 // ==========================================
 
 function verificarToken(req, res, next) {
@@ -105,7 +105,7 @@ app.get("/", (req, res) => {
 });
 
 // ==========================================
-//              AUTENTICAÇÃO NUTRICIONISTA
+//        AUTENTICAÇÃO NUTRICIONISTA
 // ==========================================
 
 app.post("/api/auth/register", async (req, res) => {
@@ -194,7 +194,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // ==========================================
-//              AUTENTICAÇÃO ADMIN (100% GARANTIDO)
+//        AUTENTICAÇÃO ADMIN (100% GARANTIDO)
 // ==========================================
 app.post("/api/auth/login-admin", async (req, res) => {
   try {
@@ -483,8 +483,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
         instagram, 
         logo_url, 
         crn,
-        // Caso a coluna exista no seu banco, ela será salva. Se não, ignorada pelo spread ou adicionada por padrão
-        ...(prisma.nutricionistas.fields?.bloquear_grupos_diferentes ? { bloquear_grupos_diferentes: boolBloqueio } : {})
+        bloquear_grupos_diferentes: boolBloqueio // Gravação direta e garantida do booleano
       },
     });
     res.json({ message: "Perfil updated!", nutricionista: nutriAtualizado });
@@ -579,7 +578,7 @@ app.get("/api/equivalencia", async (req, res) => {
         });
         
         if (paciente?.nutricionista?.bloquear_grupos_diferentes === true) {
-          bloquearTrocaDiferente = true;
+          blockearTrocaDiferente = true;
         }
       } catch (e) {
         console.warn("[Aviso] Erro ao buscar configuração de bloqueio do nutricionista:", e.message);
@@ -624,7 +623,7 @@ app.get("/api/equivalencia", async (req, res) => {
       grupo_substituto: sub.grupo
     };
 
-    // Resposta espelhada para evitar qualquer erro de interpretação no Front
+    // Resposta espelhada para evitar qualquer erro de interpretation no Front
     res.json({
       ...payloadUnificado,
       data: payloadUnificado,
