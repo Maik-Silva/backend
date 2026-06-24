@@ -100,20 +100,8 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// Mapeamento exato das coleções do Prisma conforme seu schema físico
-const tabelas = [
-  "cereais_e_tuberculos",
-  "frutas",
-  "gorduras",
-  "leguminosas",
-  "leite_e_derivados",
-  "proteina",
-  "sementes",
-  "verduras__hortali_as_e_derivados",
-];
-
 app.get("/", (req, res) => {
-  res.send("Backend online com Área do Paciente via Telefone! 🚀");
+  res.send("Backend online com a nova tabela unificada banco_equivale! 🚀");
 });
 
 // ==========================================
@@ -457,7 +445,7 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
       },
     });
 
-    res.json({ message: "Paciente atualizado!", paciente: pacienteAtualizado });
+    res.json({ message: "Paciente updated!", paciente: pacienteAtualizado });
   } catch (error) {
     res.status(500).json({ error: "Erro ao atualizar paciente." });
   }
@@ -504,43 +492,43 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
 });
 
 // ==========================================
-//       ROTAS ALIMENTARES & EQUIVALÊNCIA
+//  ROTAS ATUALIZADAS PARA 'BANCO_EQUIVALE'
 // ==========================================
 
+// Busca o alimento direto dentro da tabela única unificada
 async function buscarAlimento(nomeAlimento) {
-  const nomeLower = nomeAlimento.toLowerCase().trim();
-  for (const tabela of tabelas) {
-    try {
-      if (!prisma[tabela]) continue;
-      const alimentos = await prisma[tabela].findMany({ select: { Alimento: true, Energia__Kcal_: true } });
-      const encontrado = alimentos.find(a => a.Alimento && a.Alimento.toLowerCase().includes(nomeLower));
-      if (encontrado) return { ...encontrado, group: tabela };
-    } catch (e) {}
+  try {
+    const nomeLower = nomeAlimento.toLowerCase().trim();
+    const alimentos = await prisma.banco_equivale.findMany({
+      select: { id: true, Alimento: true, Energia__Kcal_: true, grupo: true }
+    });
+    // Retorna o primeiro que der match parcial com o nome digitado
+    const encontrado = alimentos.find(a => a.Alimento && a.Alimento.toLowerCase().includes(nomeLower));
+    return encontrado || null;
+  } catch (error) {
+    console.error("Erro ao buscar alimento no banco unificado:", error);
+    return null;
   }
-  return null;
 }
 
+// Rota de sugestões/auto-complete puxando direto da tabela única
 app.get("/api/sugestoes", async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ error: "Query obrigatória" });
-  let resultados = [];
   try {
-    for (const tabela of tabelas) {
-      if (!prisma[tabela]) continue;
-      const alimentos = await prisma[tabela].findMany({
-        where: { Alimento: { contains: query.toLowerCase().trim() } },
-        select: { Alimento: true },
-        take: 5
-      });
-      resultados = [...resultados, ...alimentos.map(a => a.Alimento)];
-    }
-    res.json({ sugestoes: resultados });
+    const alimentos = await prisma.banco_equivale.findMany({
+      where: { Alimento: { contains: query.toLowerCase().trim() } },
+      select: { Alimento: true },
+      take: 8
+    });
+    const listaSugestoes = alimentos.map(a => a.Alimento);
+    res.json({ sugestoes: listaSugestoes });
   } catch (error) {
-    res.status(500).json({ error: "Erro ao buscar sugestões." });
+    res.status(500).json({ error: "Erro ao buscar sugestões no banco unificado." });
   }
 });
 
-// ROTA INTELIGENTE DE EQUIVALÊNCIA COM VALIDAÇÃO DE SEGURANÇA POR CATEGORIA ORIGINAL
+// Rota de equivalência adaptada para a tabela unificada e validando por grupo string
 app.get("/api/equivalencia", async (req, res) => {
   const { baseFood, baseQuantity, substituteFood } = req.query;
   
@@ -556,13 +544,12 @@ app.get("/api/equivalencia", async (req, res) => {
       return res.status(404).json({ error: "Um ou ambos os alimentos não foram localizados no sistema." });
     }
 
-    // Trava de Segurança Automática baseado na categoria física original mapeada
-    if (base.group !== sub.group) {
-      const formatarNome = (slug) => slug.replace(/_/g, " ").replace("__", " / ");
+    // TRAVA DE SEGURANÇA: Compara os grupos em formato string salvos pelo seu script de migração
+    if (base.grupo !== sub.grupo) {
       return res.json({
         permitido: false,
         bloqueado: true,
-        mensagem: `⚠️ Atenção! Você está tentando trocar '${base.Alimento}' (${formatarNome(base.group)}) por '${sub.Alimento}' (${formatarNome(sub.group)}).`,
+        mensagem: `⚠️ Atenção! Você está tentando trocar '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}).`,
         detalhes: "A equivalência alimentar necessita que ambos pertençam à mesma categoria nutricional para manter o plano equilibrado."
       });
     }
@@ -583,11 +570,11 @@ app.get("/api/equivalencia", async (req, res) => {
       baseQuantity, 
       substituteFood,
       equivalentQuantity: qtdEquiv.toFixed(2),
-      baseGroup: base.group, 
-      substituteGroup: sub.group
+      baseGroup: base.grupo, 
+      substituteGroup: sub.grupo
     });
   } catch (error) {
-    console.error("Erro na rota de equivalência:", error);
+    console.error("Erro na rota de equivalência unificada:", error);
     res.status(500).json({ error: "Erro interno no processamento do cálculo." });
   }
 });
