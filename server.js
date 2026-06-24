@@ -76,4 +76,29 @@ app.post("/api/equivalencia/verificar", async (req, res) => {
         }
 
         res.json({ permitido: true, mensagem: "Troca realizada com sucesso!" });
-    } catch (error) { res.status(500
+    } catch (error) { 
+        res.status(500).json({ error: "Erro ao verificar equivalência." }); 
+    }
+});
+
+// --- Rotas Administrativas ---
+app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
+    try {
+        const totalNutris = await prisma.nutricionistas.count();
+        const totalPacientes = await prisma.pacientes.count();
+        const totalAcessos = await prisma.logs_acesso.count();
+        const nutrisLista = await prisma.nutricionistas.findMany({ 
+            select: { id: true, nome: true, email: true, ativo: true, _count: { select: { pacientes: true } } } 
+        });
+        
+        res.json({
+            cards: { totalNutris, totalPacientes, totalAcessos },
+            nutricionistas: nutrisLista.map(n => ({ id: n.id, nome: n.nome, email: n.email, ativo: n.ativo, totalPacientes: n._count.pacientes })),
+            acessosRecentes: await prisma.logs_acesso.findMany({ take: 10, orderBy: { data_acesso: 'desc' }, include: { paciente: { include: { nutricionista: true } } } })
+        });
+    } catch (error) { res.status(500).json({ error: "Erro ao buscar métricas." }); }
+});
+
+// Porta
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
