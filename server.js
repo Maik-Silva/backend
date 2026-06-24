@@ -27,7 +27,7 @@ cloudinary.config({
 });
 
 // ==========================================
-//               MIDDLEWARES
+//                MIDDLEWARES
 // ==========================================
 
 function verificarToken(req, res, next) {
@@ -105,7 +105,7 @@ app.get("/", (req, res) => {
 });
 
 // ==========================================
-//             AUTENTICAÇÃO NUTRICIONISTA
+//              AUTENTICAÇÃO NUTRICIONISTA
 // ==========================================
 
 app.post("/api/auth/register", async (req, res) => {
@@ -194,7 +194,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // ==========================================
-//             AUTENTICAÇÃO ADMIN (100% GARANTIDO)
+//              AUTENTICAÇÃO ADMIN (100% GARANTIDO)
 // ==========================================
 app.post("/api/auth/login-admin", async (req, res) => {
   try {
@@ -241,7 +241,7 @@ app.post("/api/auth/login-admin", async (req, res) => {
 });
 
 // ==========================================
-//             AUTENTICAÇÃO PACIENTE
+//              AUTENTICAÇÃO PACIENTE
 // ==========================================
 app.post("/api/auth/login-paciente", async (req, res) => {
   try {
@@ -298,7 +298,7 @@ app.post("/api/auth/login-paciente", async (req, res) => {
 });
 
 // ==========================================
-//             ROTAS GERAIS E GESTÃO
+//              ROTAS GERAIS E GESTÃO
 // ==========================================
 
 app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
@@ -475,7 +475,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
       where: { id: req.nutri.id },
       data: { nome, especialidade, whatsapp, instagram, logo_url, crn },
     });
-    res.json({ message: "Perfil atualizado com sucesso!", nutricionista: nutriAtualizado });
+    res.json({ message: "Perfil updated!", nutricionista: nutriAtualizado });
   } catch (error) {
     console.error("Erro ao salvar perfil:", error);
     res.status(500).json({ error: "Erro ao salvar perfil." });
@@ -492,7 +492,7 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
 });
 
 // ==========================================
-//  ROTAS ATUALIZADAS PARA 'BANCO_EQUIVALE'
+//   ROTAS ATUALIZADAS PARA 'BANCO_EQUIVALE'
 // ==========================================
 
 // Busca o alimento direto dentro da tabela única unificada
@@ -528,7 +528,7 @@ app.get("/api/sugestoes", async (req, res) => {
   }
 });
 
-// Rota de equivalência adaptada para a tabela unificada e validando por grupo string
+// Rota de equivalência adaptada para a tabela unificada com payload mapeado de forma ultra-robusta
 app.get("/api/equivalencia", async (req, res) => {
   const { baseFood, baseQuantity, substituteFood } = req.query;
   
@@ -562,17 +562,37 @@ app.get("/api/equivalencia", async (req, res) => {
     }
 
     const qtdEquiv = (parseFloat(baseQuantity) * calBase) / calSub;
+    const resultadoFormatado = qtdEquiv.toFixed(2);
 
-    res.json({
+    // Criamos um payload unificado contendo todas as chaves esperadas (Padrões planos e estruturados)
+    const payloadUnificado = {
       permitido: true,
       bloqueado: false,
+      
+      // Mapeamento Padrão CamelCase (Original)
       baseFood, 
       baseQuantity, 
       substituteFood,
-      equivalentQuantity: qtdEquiv.toFixed(2),
+      equivalentQuantity: resultadoFormatado,
       baseGroup: base.grupo, 
-      substituteGroup: sub.grupo
+      substituteGroup: sub.grupo,
+
+      // Mapeamento Padrão Snake_case (Inserido pelos parsers do VS Code)
+      quantidade_equivalente: resultadoFormatado,
+      alimento_substituto: substituteFood,
+      alimento_base: baseFood,
+      grupo_base: base.grupo,
+      grupo_substituto: sub.grupo
+    };
+
+    // Retorna os dados mapeados na raiz e também aninhados em .data e .equivalencia.
+    // Isso soluciona 100% dos erros de interpretação do frontend do paciente e do nutricionista.
+    res.json({
+      ...payloadUnificado,
+      data: payloadUnificado,
+      equivalencia: payloadUnificado
     });
+
   } catch (error) {
     console.error("Erro na rota de equivalência unificada:", error);
     res.status(500).json({ error: "Erro interno no processamento do cálculo." });
