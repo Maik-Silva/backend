@@ -7,16 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Tabela unificada para todos os grupos de alimentos
-model alimentos_equivale {
+// Nova tabela unificada
+model banco_equivale {
   id             Int    @id @default(autoincrement())
   Alimento       String
   Quantidade__g_ Int    @map("Quantidade (g)")
   Energia__Kcal_ Int    @map("Energia (Kcal)")
   grupo          String
+
+  @@map("banco_equivale")
 }
 
-// Modelos antigos (mantidos para não quebrar seu sistema atual)
+// Modelos antigos (mantidos para não quebrar o sistema atual)
 model gorduras {
   Alimento       String? @db.Text
   Quantidade__g_ Int?    @map("Quantidade (g)")
@@ -36,7 +38,6 @@ model leite_e_derivados {
   Quantidade__g_ Int?    @map("Quantidade (g)")
   Energia__Kcal_ Int?    @map("Energia (Kcal)")
   id             Int     @id @default(autoincrement())
-
   @@map("leite e derivados")
 }
 
@@ -66,7 +67,6 @@ model cereais_e_tuberculos {
   Quantidade__g_ Int?    @map("Quantidade (g)")
   Energia__Kcal_ Int?    @map("Energia (Kcal)")
   id             Int     @id @default(autoincrement())
-
   @@map("cereais e tuberculos")
 }
 
@@ -75,7 +75,6 @@ model verduras__hortali_as_e_derivados {
   Quantidade__g_ Int?    @map("Quantidade (g)")
   Energia__Kcal_ Int?    @map("Energia (Kcal)")
   id             Int     @id @default(autoincrement())
-
   @@map("verduras, hortaliças e derivados")
 }
 
@@ -106,24 +105,4 @@ model pacientes {
   senha_hash       String
   data_nascimento  DateTime?
   observacoes      String?  @db.Text
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
-  nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
-  logs_acesso      logs_acesso[]
-}
-
-model administradores {
-  id         Int      @id @default(autoincrement())
-  nome       String
-  email      String   @unique
-  senha_hash String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-}
-
-model logs_acesso {
-  id           Int       @id @default(autoincrement())
-  paciente_id  Int
-  data_acesso  DateTime  @default(now())
-  paciente     pacientes @relation(fields: [paciente_id], references: [id], onDelete: Cascade)
-}
+  created_at       DateTime @default(now
