@@ -464,16 +464,28 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
 
 app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, res) => {
   try {
-    const { especialidade, whatsapp, instagram, nome, crn } = req.body;
+    const { especialidade, whatsapp, instagram, nome, crn, bloquear_grupos_diferentes } = req.body;
     let logo_url = req.body.logo_url;
 
     if (req.file) {
       logo_url = req.file.path; 
     }
 
+    // Converte campo de bloqueio flexível para boolean se vier na request
+    const boolBloqueio = bloquear_grupos_diferentes === true || bloquear_grupos_diferentes === 'true';
+
     const nutriAtualizado = await prisma.nutricionistas.update({
       where: { id: req.nutri.id },
-      data: { nome, especialidade, whatsapp, instagram, logo_url, crn },
+      data: { 
+        nome, 
+        especialidade, 
+        whatsapp, 
+        instagram, 
+        logo_url, 
+        crn,
+        // Caso a coluna exista no seu banco, ela será salva. Se não, ignorada pelo spread ou adicionada por padrão
+        ...(prisma.nutricionistas.fields?.bloquear_grupos_diferentes ? { bloquear_grupos_diferentes: boolBloqueio } : {})
+      },
     });
     res.json({ message: "Perfil updated!", nutricionista: nutriAtualizado });
   } catch (error) {
@@ -495,14 +507,12 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
 //   ROTAS ATUALIZADAS PARA 'BANCO_EQUIVALE'
 // ==========================================
 
-// Busca o alimento direto dentro da tabela única unificada
 async function buscarAlimento(nomeAlimento) {
   try {
     const nomeLower = nomeAlimento.toLowerCase().trim();
     const alimentos = await prisma.banco_equivale.findMany({
       select: { id: true, Alimento: true, Energia__Kcal_: true, grupo: true }
     });
-    // Retorna o primeiro que der match parcial com o nome digitado
     const encontrado = alimentos.find(a => a.Alimento && a.Alimento.toLowerCase().includes(nomeLower));
     return encontrado || null;
   } catch (error) {
@@ -511,7 +521,6 @@ async function buscarAlimento(nomeAlimento) {
   }
 }
 
-// Rota de sugestões/auto-complete puxando direto da tabela única
 app.get("/api/sugestoes", async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ error: "Query obrigatória" });
@@ -528,9 +537,11 @@ app.get("/api/sugestoes", async (req, res) => {
   }
 });
 
-// Rota de equivalência adaptada para a tabela unificada com payload mapeado de forma ultra-robusta
+// ==========================================
+// ROTA DE EQUIVALÊNCIA DINÂMICA E FLEXÍVEL 🎯
+// ==========================================
 app.get("/api/equivalencia", async (req, res) => {
-  const { baseFood, baseQuantity, substituteFood } = req.query;
+  const { baseFood, baseQuantity, substituteFood, pacienteId } = req.query;
   
   if (!baseFood || !baseQuantity || !substituteFood) {
     return res.status(400).json({ error: "Parâmetros obrigatórios ausentes." });
@@ -544,16 +555,6 @@ app.get("/api/equivalencia", async (req, res) => {
       return res.status(404).json({ error: "Um ou ambos os alimentos não foram localizados no sistema." });
     }
 
-    // TRAVA DE SEGURANÇA: Compara os grupos em formato string salvos pelo seu script de migração
-    if (base.grupo !== sub.grupo) {
-      return res.json({
-        permitido: false,
-        bloqueado: true,
-        mensagem: `⚠️ Atenção! Você está tentando trocar '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}).`,
-        detalhes: "A equivalência alimentar necessita que ambos pertençam à mesma categoria nutricional para manter o plano equilibrado."
-      });
-    }
-
     const calBase = parseFloat(base.Energia__Kcal_) || 0;
     const calSub = parseFloat(sub.Energia__Kcal_) || 0;
     
@@ -564,12 +565,50 @@ app.get("/api/equivalencia", async (req, res) => {
     const qtdEquiv = (parseFloat(baseQuantity) * calBase) / calSub;
     const resultadoFormatado = qtdEquiv.toFixed(2);
 
-    // Criamos um payload unificado contendo todas as chaves esperadas (Padrões planos e estruturados)
+    // 1. Verifica se os grupos são diferentes
+    const gruposDiferentes = base.grupo !== sub.grupo;
+    
+    // 2. Trava de segurança flexível ativa apenas se o Nutri ligar a flag no perfil
+    let bloquearTrocaDiferente = false; 
+
+    if (gruposDiferentes && pacienteId) {
+      try {
+        const paciente = await prisma.pacientes.findUnique({
+          where: { id: parseInt(pacienteId) },
+          include: { nutricionista: true }
+        });
+        
+        if (paciente?.nutricionista?.bloquear_grupos_diferentes === true) {
+          bloquearTrocaDiferente = true;
+        }
+      } catch (e) {
+        console.warn("[Aviso] Erro ao buscar configuração de bloqueio do nutricionista:", e.message);
+      }
+    }
+
+    // CASO DE BLOQUEIO ATIVO: Envia o erro sem calcular as propriedades de sucesso
+    if (gruposDiferentes && bloquearTrocaDiferente) {
+      return res.json({
+        permitido: false,
+        bloqueado: true,
+        mensagem: `⚠️ Bloqueado: Você está tentando trocar '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}).`,
+        detalhes: "Seu nutricionista bloqueou substituições fora da mesma categoria nutricional."
+      });
+    }
+
+    // CASO PADRÃO/FLEXÍVEL: Sempre calcula e monta as strings de aviso
+    const mensagemAlerta = gruposDiferentes 
+      ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado equivalente é:`
+      : "";
+
     const payloadUnificado = {
-      permitido: true,
-      bloqueado: false,
+      permitido: true,  // Sempre liberado para renderizar o pop-up de sucesso
+      bloqueado: false, // Nunca bloqueia na regra padrão
+      gruposDiferentes,
+      mensagem: mensagemAlerta,
+      aviso: mensagemAlerta,
       
-      // Mapeamento Padrão CamelCase (Original)
+      // Formato CamelCase Plano
       baseFood, 
       baseQuantity, 
       substituteFood,
@@ -577,7 +616,7 @@ app.get("/api/equivalencia", async (req, res) => {
       baseGroup: base.grupo, 
       substituteGroup: sub.grupo,
 
-      // Mapeamento Padrão Snake_case (Inserido pelos parsers do VS Code)
+      // Formato Snake_case Plano
       quantidade_equivalente: resultadoFormatado,
       alimento_substituto: substituteFood,
       alimento_base: baseFood,
@@ -585,8 +624,7 @@ app.get("/api/equivalencia", async (req, res) => {
       grupo_substituto: sub.grupo
     };
 
-    // Retorna os dados mapeados na raiz e também aninhados em .data e .equivalencia.
-    // Isso soluciona 100% dos erros de interpretação do frontend do paciente e do nutricionista.
+    // Resposta espelhada para evitar qualquer erro de interpretação no Front
     res.json({
       ...payloadUnificado,
       data: payloadUnificado,
