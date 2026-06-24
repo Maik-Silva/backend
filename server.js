@@ -4,9 +4,6 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { PrismaClient } = require("@prisma/client");
-const multer = require("multer");
-const cloudinary = require("cloudinary").v2; 
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const app = express();
 const prisma = new PrismaClient();
@@ -16,95 +13,67 @@ app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || "chave_secreta_padrao_equivale_saas";
 
-// Configuração Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dpop2y72p',
-  api_key: process.env.CLOUDINARY_API_KEY || '747585153614338',
-  api_secret: process.env.CLOUDINARY_API_SECRET || '6Ogf8L7dPumZmjAHA2cxW3-fd7k',
-});
-
-// Middlewares de Autenticação
+// --- Middlewares ---
 function verificarToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Acesso negado." });
-  try {
-    const verificado = jwt.verify(token, JWT_SECRET);
-    if (verificado.role === 'paciente') return res.status(403).json({ error: "Acesso negado." });
-    req.nutri = verificado;
-    next();
-  } catch (error) { res.status(403).json({ error: "Token inválido." }); }
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    if (!token) return res.status(401).json({ error: "Acesso negado." });
+    try {
+        const verificado = jwt.verify(token, JWT_SECRET);
+        if (verificado.role === 'paciente') return res.status(403).json({ error: "Acesso negado." });
+        req.nutri = verificado;
+        next();
+    } catch (error) { res.status(403).json({ error: "Token inválido." }); }
 }
 
 function verificarTokenAdmin(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Acesso negado." });
-  try {
-    const verificado = jwt.verify(token, JWT_SECRET);
-    if (verificado.role !== 'admin') return res.status(403).json({ error: "Apenas administradores." });
-    req.admin = verificado;
-    next();
-  } catch (error) { res.status(403).json({ error: "Sessão inválida." }); }
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    if (!token) return res.status(401).json({ error: "Acesso negado." });
+    try {
+        const verificado = jwt.verify(token, JWT_SECRET);
+        if (verificado.role !== 'admin') return res.status(403).json({ error: "Apenas administradores." });
+        req.admin = verificado;
+        next();
+    } catch (error) { res.status(403).json({ error: "Sessão inválida." }); }
 }
 
-// Rotas de Autenticação (Resumo)
+// --- Rotas de Autenticação ---
 app.post("/api/auth/login-admin", async (req, res) => {
-  try {
-    const { email, senha, password } = req.body;
-    const senhaFinal = senha || password;
-    const emailLimpo = email.trim().toLowerCase();
-    const admin = await prisma.administradores.findUnique({ where: { email: emailLimpo } });
-    
-    let senhaCorreta = (emailLimpo === 'maiknatanael20@gmail.com' && senhaFinal === '23Novembrode2010.');
-    if (!senhaCorreta && admin) senhaCorreta = await bcrypt.compare(senhaFinal, admin.senha_hash);
+    try {
+        const { email, senha, password } = req.body;
+        const senhaFinal = senha || password;
+        const emailLimpo = email.trim().toLowerCase();
+        const admin = await prisma.administradores.findUnique({ where: { email: emailLimpo } });
+        
+        let senhaCorreta = (emailLimpo === 'maiknatanael20@gmail.com' && senhaFinal === '23Novembrode2010.');
+        if (!senhaCorreta && admin) senhaCorreta = await bcrypt.compare(senhaFinal, admin.senha_hash);
 
-    if (!admin || !senhaCorreta) return res.status(400).json({ error: "Credenciais inválidas." });
+        if (!admin || !senhaCorreta) return res.status(400).json({ error: "Credenciais inválidas." });
 
-    const token = jwt.sign({ id: admin.id, email: admin.email, role: 'admin' }, JWT_SECRET, { expiresIn: "1d" });
-    res.json({ token, admin: { id: admin.id, nome: admin.nome, email: admin.email } });
-  } catch (error) { res.status(500).json({ error: "Erro no servidor." }); }
+        const token = jwt.sign({ id: admin.id, email: admin.email, role: 'admin' }, JWT_SECRET, { expiresIn: "1d" });
+        res.json({ token, admin: { id: admin.id, nome: admin.nome, email: admin.email } });
+    } catch (error) { res.status(500).json({ error: "Erro no servidor." }); }
 });
 
-// Rotas Administrativas de Gestão
-app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
-  try {
-    const totalNutris = await prisma.nutricionistas.count();
-    const totalPacientes = await prisma.pacientes.count();
-    const totalAcessos = prisma.logs_acesso ? await prisma.logs_acesso.count() : 0;
-    const nutrisLista = await prisma.nutricionistas.findMany({ select: { id: true, nome: true, email: true, ativo: true, _count: { select: { pacientes: true } } } });
-    
-    res.json({
-      cards: { totalNutris, totalPacientes, totalAcessos },
-      nutricionistas: nutrisLista.map(n => ({ id: n.id, nome: n.nome, email: n.email, ativo: n.ativo, totalPacientes: n._count.pacientes })),
-      acessosRecentes: prisma.logs_acesso ? await prisma.logs_acesso.findMany({ take: 10, orderBy: { data_acesso: 'desc' }, include: { paciente: { include: { nutricionista: true } } } }) : []
-    });
-  } catch (error) { res.status(500).json({ error: "Erro ao buscar métricas." }); }
-});
+// --- Rota de Equivalência (Nova Lógica com Trava) ---
+app.post("/api/equivalencia/verificar", async (req, res) => {
+    try {
+        const { idBase, idSubstituicao } = req.body;
 
-app.patch("/api/admin/nutricionistas/:id/status", verificarTokenAdmin, async (req, res) => {
-  try {
-    const { ativo } = req.body;
-    const nutri = await prisma.nutricionistas.update({ where: { id: parseInt(req.params.id) }, data: { ativo } });
-    res.json({ message: "Status atualizado!", ativo: nutri.ativo });
-  } catch (error) { res.status(500).json({ error: "Erro ao atualizar status." }); }
-});
+        const base = await prisma.banco_equivale.findUnique({ where: { id: idBase } });
+        const sub = await prisma.banco_equivale.findUnique({ where: { id: idSubstituicao } });
 
-app.put("/api/admin/nutricionistas/:id", verificarTokenAdmin, async (req, res) => {
-  try {
-    const { nome, email } = req.body;
-    const nutri = await prisma.nutricionistas.update({ where: { id: parseInt(req.params.id) }, data: { nome, email } });
-    res.json({ message: "Dados atualizados!", nutricionista: nutri });
-  } catch (error) { res.status(500).json({ error: "Erro ao atualizar dados." }); }
-});
+        if (!base || !sub) return res.status(404).json({ error: "Alimento não encontrado na base." });
 
-app.get("/api/admin/nutricionistas/:id/pacientes", verificarTokenAdmin, async (req, res) => {
-  try {
-    const pacientes = await prisma.pacientes.findMany({ where: { nutricionista_id: parseInt(req.params.id) } });
-    res.json(pacientes);
-  } catch (error) { res.status(500).json({ error: "Erro ao buscar pacientes." }); }
-});
+        // Trava de Segurança: Verifica se os grupos são diferentes
+        if (base.grupo !== sub.grupo) {
+            return res.json({
+                permitido: false,
+                mensagem: `⚠️ Atenção! Você está tentando trocar '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}).`,
+                detalhes: "Os alimentos pertencem a grupos diferentes."
+            });
+        }
 
-// [Manter o restante das suas rotas existentes abaixo...]
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+        res.json({ permitido: true, mensagem: "Troca realizada com sucesso!" });
+    } catch (error) { res.status(500
