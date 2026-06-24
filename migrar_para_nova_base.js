@@ -1,44 +1,39 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// Mapeamento das suas tabelas antigas para o campo 'grupo' da nova tabela
-const mapeamento = [
-    { tabela: 'cereais_e_tuberculos', nomeGrupo: 'Cereais e Tubérculos' },
-    { tabela: 'frutas', nomeGrupo: 'Frutas' },
-    { tabela: 'gorduras', nomeGrupo: 'Gorduras' },
-    { tabela: 'leguminosas', nomeGrupo: 'Leguminosas' },
-    { tabela: 'leite_e_derivados', nomeGrupo: 'Leite e Derivados' },
-    { tabela: 'proteina', nomeGrupo: 'Proteínas' },
-    { tabela: 'sementes', nomeGrupo: 'Sementes' },
-    { tabela: 'verduras__hortali_as_e_derivados', nomeGrupo: 'Verduras e Hortaliças' }
+const configuracao = [
+    { modelo: 'cereais_e_tuberculos', nomeGrupo: 'Cereais e Tubérculos' },
+    { modelo: 'frutas', nomeGrupo: 'Frutas' },
+    { modelo: 'gorduras', nomeGrupo: 'Gorduras' },
+    { modelo: 'leguminosas', nomeGrupo: 'Leguminosas' },
+    { modelo: 'leite_e_derivados', nomeGrupo: 'Leite e Derivados' },
+    { modelo: 'proteina', nomeGrupo: 'Proteínas' },
+    { modelo: 'sementes', nomeGrupo: 'Sementes' },
+    { modelo: 'verduras__hortali_as_e_derivados', nomeGrupo: 'Verduras e Hortaliças' }
 ];
 
 async function migrar() {
-    console.log("Iniciando migração...");
+    console.log("Iniciando migração para 'banco_equivale'...");
     
-    for (const m of mapeamento) {
+    for (const item of configuracao) {
         try {
-            // Busca todos os dados da tabela antiga
-            const dadosAntigos = await prisma.$queryRawUnsafe(`SELECT * FROM \`${m.tabela}\``);
-            
-            if (dadosAntigos.length > 0) {
-                for (const item of dadosAntigos) {
-                    await prisma.alimentos_equivale.create({
-                        data: {
-                            Alimento: item.Alimento || "Sem nome",
-                            Quantidade__g_: item['Quantidade (g)'] || 0,
-                            Energia__Kcal_: item['Energia (Kcal)'] || 0,
-                            grupo: m.nomeGrupo
-                        }
-                    });
-                }
-                console.log(`Sucesso: ${dadosAntigos.length} itens migrados para o grupo ${m.nomeGrupo}`);
+            const registros = await prisma[item.modelo].findMany();
+            for (const reg of registros) {
+                await prisma.banco_equivale.create({
+                    data: {
+                        Alimento: reg.Alimento || "Sem nome",
+                        Quantidade__g_: reg.Quantidade__g_ || 0,
+                        Energia__Kcal_: reg.Energia__Kcal_ || 0,
+                        grupo: item.nomeGrupo
+                    }
+                });
             }
+            console.log(`Sucesso: ${item.nomeGrupo} migrado.`);
         } catch (error) {
-            console.error(`Erro ao migrar tabela ${m.tabela}:`, error.message);
+            console.error(`Erro ao migrar ${item.modelo}:`, error.message);
         }
     }
-    console.log("Migração concluída!");
+    console.log("Migração finalizada!");
+    await prisma.$disconnect();
 }
-
 migrar();
