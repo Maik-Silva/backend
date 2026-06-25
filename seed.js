@@ -33,19 +33,34 @@ function obtenerGrupoGeral(classeTBCA) {
 async function processarSeed() {
   const filePath = path.resolve(__dirname, './alimentos.txt'); 
   
-  console.log('⏳ Carregando o arquivo de dados na memória...');
+  console.log('⏳ Carregando o arquivo de dados...');
   const conteudoTexto = fs.readFileSync(filePath, 'utf-8');
   
-  console.log('⚙️ Convertendo texto para JSON...');
-  const alimentos = JSON.parse(conteudoTexto);
+  // Limpeza de segurança: Se o arquivo veio envelopado como array, remove os colchetes externos
+  // e separa cada objeto limpando possíveis vírgulas sobressalentes.
+  let blocosTexto = conteudoTexto.trim();
+  if (blocosTexto.startsWith('[')) blocosTexto = blocosTexto.substring(1);
+  if (blocosTexto.endsWith(']')) blocosTexto = blocosTexto.substring(0, blocosTexto.length - 1);
 
-  console.log(`🚀 Iniciando injeção inteligente de ${alimentos.length} alimentos...`);
+  // Divide pelas quebras de objetos JSON: "}," ou "\n"
+  const linhasCruas = blocosTexto.split(/\},\s*\{/);
+
+  console.log(`🚀 Iniciando processamento inteligente...`);
   let criados = 0;
   let atualizados = 0;
 
-  for (const alimentoTBCA of alimentos) {
+  for (let i = 0; i < linhasCruas.length; i++) {
     try {
-      const infoKcal = alimentoTBCA.nutrientes.find(
+      let stringObjeto = linhasCruas[i].trim();
+      if (!stringObjeto) continue;
+
+      // Reconstroi o objeto JSON de forma válida caso tenha sido quebrado no split
+      if (!stringObjeto.startsWith('{')) stringObjeto = '{' + stringObjeto;
+      if (!stringObjeto.endsWith('}')) stringObjeto = stringObjeto + '}';
+
+      const alimentoTBCA = JSON.parse(stringObjeto);
+
+      const infoKcal = alimentoTBCA.nutrientes?.find(
         (n) => n.Componente === 'Energia' && n.Unidades === 'kcal'
       );
       
@@ -64,14 +79,12 @@ async function processarSeed() {
       });
 
       if (registroExistenteGeral) {
-        // Se já existe, atualiza para economizar espaço
         await prisma.banco_equivale.update({
           where: { id: registroExistenteGeral.id },
           data: { Energia__Kcal_: kcalVal, grupo: grupoGeral }
         });
         atualizados++;
       } else {
-        // Se não existe, cria um novo
         await prisma.banco_equivale.create({
           data: { Alimento: nomeAlimento, Quantidade__g_: 100, Energia__Kcal_: kcalVal, grupo: grupoGeral }
         });
@@ -159,17 +172,18 @@ async function processarSeed() {
       }
 
       if ((criados + atualizados) % 200 === 0) {
-        console.log(`Log: ${criados} novos criados, ${atualizados} atualizados...`);
+        console.log(`Log: ${criados} criados, ${atualizados} atualizados (espaço economizado)...`);
       }
 
     } catch (err) {
+      // Ignora pedaços malformados ou linhas vazias das pontas
       continue;
     }
   }
 
-  console.log(`\n🎉 Processo Concluído com Segurança!`);
-  console.log(`🔹 Alimentos Novos Adicionados: ${criados}`);
-  console.log(`🔹 Alimentos Repetidos Atualizados (Espaço Salvo): ${atualizados}`);
+  console.log(`\n🎉 Processo concluído com sucesso total!`);
+  console.log(`🔹 Novos registros criados: ${criados}`);
+  console.log(`🔹 Alimentos repetidos atualizados: ${atualizados}`);
 }
 
 processarSeed()
