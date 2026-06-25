@@ -236,6 +236,7 @@ app.post("/api/auth/login-admin", async (req, res) => {
     res.status(500).json({ error: "Erro interno ao realizar login do admin." });
   }
 });
+
 app.post("/api/auth/login-paciente", async (req, res) => {
   try {
     const { telefone, data_nascimento } = req.body;
@@ -575,8 +576,11 @@ app.get("/api/equivalencia", async (req, res) => {
       });
     }
 
+    // ==============================================================
+    // CORREÇÃO APLICADA AQUI: Interpolação do resultado na string
+    // ==============================================================
     const mensagemAlerta = gruposDiferentes 
-      ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado equivalente é:`
+      ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado equivalente é: ${resultadoFormatado}g de ${sub.Alimento}.`
       : "";
 
     const payloadUnificado = {
