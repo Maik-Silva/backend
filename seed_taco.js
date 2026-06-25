@@ -1,11 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
+const XLSX = require('xlsx');
 
 const prisma = new PrismaClient();
 
-// Mapeamento das categorias nativas da TACO para os grupos do seu sistema
 function mapearCategoriaTaco(categoria) {
+  if (!categoria) return 'Outros';
   const c = categoria.toLowerCase();
   if (c.includes('cereais') || c.includes('tubérculos') || c.includes('raízes')) return 'Cereais e Tubérculos';
   if (c.includes('leguminosas')) return 'Leguminosas';
@@ -19,59 +20,67 @@ function mapearCategoriaTaco(categoria) {
 }
 
 async function processarSeedTaco() {
-  // Ajuste o nome do arquivo para bater exatamente com o arquivo que está na pasta prisma/ ou na raiz
-  const filePath = path.resolve(__dirname, './Taco-4a-Edicao.xlsx - CMVCol taco3.csv'); 
+  // Certifique-se de que o arquivo Taco-4a-Edicao.xlsx está na raiz do projeto junto com este script
+  const filePath = path.resolve(__dirname, './Taco-4a-Edicao.xlsx'); 
   
-  console.log('⏳ Carregando o arquivo CMVCol da TACO...');
-  const conteudoTexto = fs.readFileSync(filePath, 'utf-8');
+  if (!fs.existsSync(filePath)) {
+    console.error(`❌ Erro: O arquivo ${filePath} não foi encontrado na raiz do projeto!`);
+    return;
+  }
+
+  console.log('⏳ Carregando e processando o arquivo Excel da TACO (isso pode levar alguns segundos)...');
+  const workbook = XLSX.readFile(filePath);
   
-  const linhas = conteudoTexto.split(/\r?\n/);
-  console.log(`🚀 Analisando ${linhas.length} linhas...`);
+  // Seleciona a primeira aba ou tenta buscar a aba Centesimal pelo nome aproximado
+  const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('centesi') || n.toLowerCase().includes('taco')) || workbook.SheetNames[0];
+  console.log(`📊 Lendo a aba: "${sheetName}"`);
+  const sheet = workbook.Sheets[sheetName];
+  
+  // Converte a aba em uma matriz de linhas e colunas
+  const dadosMatriz = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  console.log(`🚀 Analisando ${dadosMatriz.length} linhas de dados...`);
 
   let categoriaAtual = "Outros";
   let criados = 0;
   let ignoradosDuplicados = 0;
 
-  for (let i = 0; i < linhas.length; i++) {
-    const linha = linhas[i].trim();
-    if (!linha) continue;
+  for (let i = 0; i < dadosMatriz.length; i++) {
+    const colunas = dadosMatriz[i];
+    if (!colunas || colunas.length === 0) continue;
 
-    // Divide a linha considerando possíveis aspas em nomes compostos
-    const colunas = linha.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-
-    // 1. Identifica se a linha é um cabeçalho de categoria (ex: "Cereais e derivados,,,,,,,,...")
-    if (colunas[0] && isNaN(parseInt(colunas[0].trim())) && colunas.slice(1).every(c => c.trim() === '')) {
-      categoriaAtual = colunas[0].replace(/"/g, '').trim();
+    // 1. Identifica se a linha representa uma nova categoria (Ex: "Cereais e derivados" na primeira célula e o resto vazio)
+    const primeiraCelula = colunas[0]?.toString().trim();
+    if (primeiraCelula && isNaN(parseInt(primeiraCelula)) && colunas.slice(1).every(c => c === undefined || c === null || c === '')) {
+      categoriaAtual = primeiraCelula;
       continue;
     }
 
-    const idAlimento = parseInt(colunas[0]?.trim());
-    // Pula linhas de cabeçalho de colunas ou linhas inválidas
-    if (isNaN(idAlimento)) continue;
+    const idAlimento = parseInt(primeiraCelula);
+    if (isNaN(idAlimento)) continue; // Pula cabeçalhos textuais das colunas
 
-    let nomeAlimento = colunas[1]?.replace(/"/g, '').trim();
-    let kcalRaw = colunas[3]?.trim();
+    // Na TACO padrão, coluna 1 é a Descrição e coluna 3 costuma ser a Energia (kcal)
+    let nomeAlimento = colunas[1]?.toString().trim();
+    let kcalRaw = colunas[3]?.toString().trim();
 
     if (!nomeAlimento || !kcalRaw || kcalRaw === 'NA' || kcalRaw === '-') continue;
 
-    // Converte kcal para número inteiro (substituindo vírgula por ponto se houver)
     const kcalVal = Math.round(parseFloat(kcalRaw.replace(',', '.')));
     if (isNaN(kcalVal)) continue;
 
     const grupoGeral = mapearCategoriaTaco(categoriaAtual);
 
     try {
-      // --- TRAVA DE DUPLICIDADE COESA ---
+      // Evita duplicidade cruzada com a TBCA
       const registroExistente = await prisma.banco_equivale.findFirst({
         where: { Alimento: nomeAlimento }
       });
 
       if (registroExistente) {
         ignoradosDuplicados++;
-        continue; // Já veio da TBCA ou foi processado, pula para manter integridade
+        continue;
       }
 
-      // Adiciona na tabela central do Banco de Equivalentes
+      // Salva no Banco Geral
       await prisma.banco_equivale.create({
         data: {
           Alimento: nomeAlimento,
@@ -81,7 +90,7 @@ async function processarSeedTaco() {
         }
       });
 
-      // Adiciona na respectiva tabela de grupo específico
+      // Salva nas tabelas dos grupos correspondentes do seu Schema
       const dadosGrupo = { Alimento: nomeAlimento, Quantidade__g_: 100, Energia__Kcal_: kcalVal };
 
       switch (grupoGeral) {
@@ -118,14 +127,13 @@ async function processarSeedTaco() {
       }
 
     } catch (err) {
-      // Pula qualquer erro de linha individual de forma segura
-      continue;
+      continue; // Ignora erros isolados de banco e continua o loop
     }
   }
 
-  console.log(`\n🎉 Integração da TACO concluída!`);
-  console.log(`🔹 Novos registros exclusivos da TACO adicionados: ${criados}`);
-  console.log(`🔹 Alimentos repetidos ignorados (já existentes da TBCA): ${ignoradosDuplicados}`);
+  console.log(`\n🎉 Integração da TACO (.xlsx) concluída!`);
+  console.log(`🔹 Novos registros exclusivos adicionados: ${criados}`);
+  console.log(`🔹 Alimentos repetidos ignorados (já vindos da TBCA): ${ignoradosDuplicados}`);
 }
 
 processarSeedTaco()
