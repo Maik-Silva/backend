@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
 }
 
 datasource db {
@@ -80,35 +81,35 @@ model verduras__hortali_as_e_derivados {
 }
 
 model nutricionistas {
-  id            Int      @id @default(autoincrement())
+  id            Int         @id @default(autoincrement())
   nome          String
-  email         String   @unique
+  email         String      @unique
   senha_hash    String
   crn           String?
   especialidade String?
   whatsapp      String?
   instagram     String?
-  logo_url      String?  @db.Text
-  plano         String   @default("free")
-  ativo         Boolean  @default(true)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  logo_url      String?     @db.Text
+  plano         String      @default("free")
+  ativo         Boolean     @default(true)
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
   pacientes     pacientes[]
 }
 
 model pacientes {
-  id               Int      @id @default(autoincrement())
+  id              Int            @id @default(autoincrement())
   nutricionista_id Int
-  nome             String
-  email            String   @unique
-  telefone         String
-  senha_hash       String
-  data_nascimento  DateTime?
-  observacoes      String?  @db.Text
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
-  nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
-  logs_acesso      logs_acesso[]
+  nome            String
+  email           String         @unique
+  telefone        String
+  senha_hash      String
+  data_nascimento DateTime?
+  observacoes     String?        @db.Text
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  nutricionista   nutricionistas @relation(fields: [nutricionista_id], references: [id])
+  logs_acesso     logs_acesso[]
 }
 
 model administradores {
