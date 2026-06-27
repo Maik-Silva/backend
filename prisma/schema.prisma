@@ -41,6 +41,14 @@ model leite_e_derivados {
   @@map("leite e derivados")
 }
 
+model suplementos {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+
 model proteina {
   Alimento       String? @db.Text
   Quantidade__g_ Int?    @map("Quantidade (g)")
