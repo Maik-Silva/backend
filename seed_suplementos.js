@@ -1139,6 +1139,20 @@ const dadosSuplementos = {
     { "Alimento": "Suplemento Hidroeletrolítico Hydra Energy Sabor Laranja - Essential Nutrition", "Quantidade__g_": 100, "Energia__Kcal_": 321, "grupo": "suplementos" },
     { "Alimento": "Suplemento Hidroeletrolítico Hydra Energy Sabor Limão - Essential Nutrition", "Quantidade__g_": 100, "Energia__Kcal_": 321, "grupo": "suplementos" },
     { "Alimento": "Isotônico Pronto Sabor Guaraná com Açaí - Sportade New Millen", "Quantidade__g_": 100, "Energia__Kcal_": 25, "grupo": "suplementos" }
+  {
+  "seed_cereais_e_tuberculos": [
+    { "Alimento": "Pão de Queijo Pronto Congelado Tradicional - Forno de Minas", "Quantidade__g_": 100, "Energia__Kcal_": 286, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Pão de Queijo Pronto Tradicional Lanche - Casa do Pão de Queijo", "Quantidade__g_": 100, "Energia__Kcal_": 303, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Pão de Queijo Pronto Assado Tradicional - Catupiry", "Quantidade__g_": 100, "Energia__Kcal_": 295, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Pão de Queijo Gourmet da Fazenda Assado - Pão de Queijo da Mineira", "Quantidade__g_": 100, "Energia__Kcal_": 310, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Pão de Queijo Pronto Fit com Batata Doce - Maromba Food", "Quantidade__g_": 100, "Energia__Kcal_": 242, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Pão de Queijo Pronto Multigrãos - Forno de Minas", "Quantidade__g_": 100, "Energia__Kcal_": 278, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Cuscuz de Milho Cozido Simples Tradicional - Flocão Vitamilho", "Quantidade__g_": 100, "Energia__Kcal_": 112, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Cuscuz de Milho Nordestino Cozido - Flocão Dona Benta", "Quantidade__g_": 100, "Energia__Kcal_": 115, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Cuscuz de Milho Cozido de Panela - Flocão Coringa", "Quantidade__g_": 100, "Energia__Kcal_": 110, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Cuscuz de Milho Flocado Cozido - Flocão Maratá", "Quantidade__g_": 100, "Energia__Kcal_": 114, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Cuscuz de Milho Integral Cozido - Flocão Urbano", "Quantidade__g_": 100, "Energia__Kcal_": 108, "grupo": "cereais_e_tuberculos" },
+    { "Alimento": "Cuscuz de Milho Cozido Sem Sal - Flocão Pinduca", "Quantidade__g_": 100, "Energia__Kcal_": 112, "grupo": "cereais_e_tuberculos" }
   ]
 }
 
