@@ -110,15 +110,19 @@ app.get("/", (req, res) => {
 
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { nome, email, senha, crn, chaveAcesso } = req.body;
+    const { nome, email, senha, crn, chaveAcesso, sexo } = req.body;
     const CHAVE_VALIDA = process.env.CHAVE_CONVITE || "BETA100EQUIVALE";
 
     if (!chaveAcesso || chaveAcesso.trim() !== CHAVE_VALIDA) {
       return res.status(403).json({ error: "Chave de convite inválida ou expirada." });
     }
 
-    if (!nome || !email || !senha) {
-      return res.status(400).json({ error: "Nome, e-mail e senha são obrigatórios." });
+    if (!nome || !email || !senha || !sexo) {
+      return res.status(400).json({ error: "Nome, e-mail, senha e sexo são obrigatórios." });
+    }
+
+    if (sexo !== "Feminino" && sexo !== "Masculino") {
+      return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
     }
 
     const usuarioExiste = await prisma.nutricionistas.findUnique({ where: { email } });
@@ -135,6 +139,7 @@ app.post("/api/auth/register", async (req, res) => {
         email: email.trim().toLowerCase(),
         senha_hash,
         crn: crn || null,
+        sexo,
         plano: "free",
         ativo: true,
       },
@@ -185,6 +190,7 @@ app.post("/api/auth/login", async (req, res) => {
         email: nutri.email,
         crn: nutri.crn,
         plano: nutri.plano,
+        sexo: nutri.sexo,
       },
     });
   } catch (error) {
@@ -283,6 +289,7 @@ app.post("/api/auth/login-paciente", async (req, res) => {
         id: paciente.id,
         nome: paciente.nome,
         telefone: paciente.telefone,
+        sexo: paciente.sexo,
       },
     });
   } catch (error) {
@@ -301,6 +308,7 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
         email: true,
         telefone: true,
         data_nascimento: true,
+        sexo: true,
         observacoes: true,
         nutricionista: {
           select: {
@@ -323,7 +331,7 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
 });
 
 // ==========================================
-//             ROTAS DO ADMINISTRADOR
+//         ROTAS DO ADMINISTRADOR
 // ==========================================
 
 app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
@@ -400,10 +408,10 @@ app.put("/api/admin/nutricionistas/:id/limite", verificarTokenAdmin, async (req,
 app.get("/api/admin/usuarios", verificarTokenAdmin, async (req, res) => {
   try {
     const nutricionistas = await prisma.nutricionistas.findMany({
-      select: { id: true, nome: true, email: true, ativo: true, crn: true }
+      select: { id: true, nome: true, email: true, ativo: true, crn: true, sexo: true }
     });
     const pacientes = await prisma.pacientes.findMany({
-      select: { id: true, nome: true, email: true, telefone: true, nutricionista: { select: { nome: true } } }
+      select: { id: true, nome: true, email: true, telefone: true, sexo: true, nutricionista: { select: { nome: true } } }
     });
 
     res.json({ nutricionistas, pacientes });
@@ -442,7 +450,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
   try {
     const targetId = req.nutri.role === 'admin' && req.body.id ? parseInt(req.body.id) : req.nutri.id;
 
-    const { especialidade, whatsapp, instagram, nome, crn, bloquear_grupos_diferentes } = req.body;
+    const { especialidade, whatsapp, instagram, nome, crn, bloquear_grupos_diferentes, sexo } = req.body;
     let logo_url = req.body.logo_url;
 
     if (req.file) {
@@ -460,6 +468,11 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
       boolBloqueio = true;
     }
 
+    // Validação se o sexo foi modificado e enviado
+    if (sexo && sexo !== "Feminino" && sexo !== "Masculino") {
+      return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
+    }
+
     const nutriAtualizado = await prisma.nutricionistas.update({
       where: { id: targetId },
       data: { 
@@ -469,13 +482,14 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
         instagram: instagram || null,
         logo_url: logo_url || undefined, 
         crn: crn || null,
-        bloquear_grupos_diferentes: boolBloqueio
+        bloquear_grupos_diferentes: boolBloqueio,
+        sexo: sexo || undefined
       },
     });
 
     console.log(`[Sucesso] Configuração de bloqueio do Nutri ID ${targetId} atualizada para: ${boolBloqueio}`);
 
-    res.json({ message: "Perfil atualizado com sucesso!", nutricionista: nutriAtualizado });
+    res.json({ message: "Perfil updated com sucesso!", nutricionista: nutriAtualizado });
   } catch (error) {
     console.error("Erro detalhado ao salvar perfil:", error);
     res.status(500).json({ error: "Erro ao salvar perfil." });
@@ -484,16 +498,20 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
 
 
 // ==========================================
-//             ROTAS DE PACIENTES
+//               ROTAS DE PACIENTES
 // ==========================================
 
 app.post("/api/pacientes", verificarToken, async (req, res) => {
   try {
-    const { nome, email, telefone, data_nascimento, observacoes } = req.body;
+    const { nome, email, telefone, data_nascimento, observacoes, sexo } = req.body;
     const nutricionista_id = req.nutri.id;
 
-    if (!nome || !email || !telefone || !data_nascimento) {
-      return res.status(400).json({ error: "Campos obrigatórios ausentes." });
+    if (!nome || !email || !telefone || !data_nascimento || !sexo) {
+      return res.status(400).json({ error: "Campos obrigatórios ausentes (Nome, E-mail, Telefone, Data de Nascimento ou Sexo)." });
+    }
+
+    if (sexo !== "Feminino" && sexo !== "Masculino") {
+      return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
     }
 
     const nutriConfig = await prisma.nutricionistas.findUnique({
@@ -521,6 +539,7 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
         senha_hash, 
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
+        sexo,
       },
     });
 
@@ -546,9 +565,13 @@ app.get("/api/pacientes", verificarToken, async (req, res) => {
 app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, email, telefone, data_nascimento, observacoes } = req.body;
+    const { nome, email, telefone, data_nascimento, observacoes, sexo } = req.body;
 
     const filtro = req.nutri.role === 'admin' ? { id: parseInt(id) } : { id: parseInt(id), nutricionista_id: req.nutri.id };
+
+    if (sexo && sexo !== "Feminino" && sexo !== "Masculino") {
+      return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
+    }
 
     const pacienteAtualizado = await prisma.pacientes.update({
       where: filtro,
@@ -558,6 +581,7 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
         telefone: telefone ? telefone.replace(/\D/g, "") : undefined,
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
+        sexo: sexo || undefined,
       },
     });
 
@@ -652,7 +676,7 @@ app.get("/api/equivalencia", async (req, res) => {
         });
         
         if (paciente?.nutricionista?.bloquear_grupos_diferentes === true) {
-          bloquearTrocaDiferente = true;
+          blockearTrocaDiferente = true;
         }
       } catch (e) {
         console.warn("[Aviso] Erro ao buscar configuração de bloqueio do nutricionista:", e.message);
