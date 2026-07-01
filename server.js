@@ -35,7 +35,7 @@ function verificarToken(req, res, next) {
   const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
-    return res.status(401).json({ error: "Acesso negado. Faça login para continuar." });
+    return res.status(401).json({ error: "Acesso negado. Faça login para continue." });
   }
 
   try {
@@ -632,7 +632,7 @@ async function buscarAlimento(nomeAlimento) {
   try {
     const nomeLower = nomeAlimento.toLowerCase().trim();
     
-    // CORREÇÃO: Removido o 'mode: insensitive' que quebrava no MySQL
+    // CORREÇÃO: Removido o 'mode: insensitive' que causava quebra no MySQL
     return await prisma.banco_equivale.findFirst({
       where: {
         Alimento: {
@@ -669,6 +669,11 @@ app.get("/api/sugestoes", async (req, res) => {
 });
 
 app.get("/api/equivalencia", async (req, res) => {
+  // 👇 CORREÇÃO CRÍTICA: Desativa totalmente o cache HTTP na rota para evitar o Status 304 do navegador
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const { baseFood, baseQuantity, substituteFood, pacienteId, confirmado } = req.query;
   
   if (!baseFood || !baseQuantity || !substituteFood) {
