@@ -121,6 +121,7 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(400).json({ error: "Nome, e-mail, senha e sexo são obrigatórios." });
     }
 
+    // Normalização inteligente do campo sexo
     let sexoFormatado = sexo;
     if (sexo && typeof sexo === 'string') {
       sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
@@ -425,6 +426,7 @@ app.get("/api/admin/usuarios", verificarTokenAdmin, async (req, res) => {
   }
 });
 
+
 // ==========================================
 //     PERFIL E VISÃO GERAL DO NUTRICIONISTA
 // ==========================================
@@ -442,7 +444,7 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
     res.json({
       ...nutri,
       total_sugestoes: 0,
-      sugestoes_realizadas: 0
+      suggestions_realizadas: 0
     });
   } catch (error) {
     console.error("Erro ao buscar perfil do nutricionista:", error);
@@ -461,6 +463,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
       logo_url = req.file.path; 
     }
 
+    // TRATAMENTO DO BOOLEANO SEGURO:
     let boolBloqueio = false;
     if (
       bloquear_grupos_diferentes === true || 
@@ -471,6 +474,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
       boolBloqueio = true;
     }
 
+    // Normalização e validação se o sexo foi modificado e enviado
     let sexoFormatado = sexo;
     if (sexo && typeof sexo === 'string') {
       sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
@@ -486,7 +490,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
         nome: nome || undefined,
         especialidade: especialidade || null,
         whatsapp: whatsapp || null,
-        instagram: instagram || null,
+        instagram: instagram || null, // <- Corrigido aqui para evitar bugs de nulidade
         logo_url: logo_url || undefined, 
         crn: crn || null,
         bloquear_grupos_diferentes: boolBloqueio,
@@ -494,7 +498,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
       },
     });
 
-    console.log(`[Sucesso] Configuração de bloqueio do Nutri ID ${targetId} updated para: ${boolBloqueio}`);
+    console.log(`[Sucesso] Configuração de bloqueio do Nutri ID ${targetId} atualizada para: ${boolBloqueio}`);
 
     res.json({ message: "Perfil updated com sucesso!", nutricionista: nutriAtualizado });
   } catch (error) {
@@ -502,6 +506,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
     res.status(500).json({ error: "Erro ao salvar perfil." });
   }
 });
+
 
 // ==========================================
 //                 ROTAS DE PACIENTES
@@ -516,6 +521,7 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
       return res.status(400).json({ error: "Campos obrigatórios ausentes (Nome, E-mail, Telefone, Data de Nascimento ou Sexo)." });
     }
 
+    // Normalização inteligente do campo sexo
     let sexoFormatado = sexo;
     if (sexo && typeof sexo === 'string') {
       sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
@@ -581,6 +587,7 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
 
     const filtro = req.nutri.role === 'admin' ? { id: parseInt(id) } : { id: parseInt(id), nutricionista_id: req.nutri.id };
 
+    // Normalização inteligente do campo sexo
     let sexoFormatado = sexo;
     if (sexo && typeof sexo === 'string') {
       sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
@@ -621,22 +628,19 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
   }
 });
 
+
 // ==========================================
-//         ALIMENTOS E EQUIVALÊNCIAS
+//        ALIMENTOS E EQUIVALÊNCIAS
 // ==========================================
 
+// Restaurada para a versão original funcional baseada em findMany + find com Includes
 async function buscarAlimento(nomeAlimento) {
   try {
     const nomeLower = nomeAlimento.toLowerCase().trim();
-    
-    // RESTAURADO: Traz o mapeamento total para a memória do Node conforme esperado pelo front-end anterior
     const alimentos = await prisma.banco_equivale.findMany({
       select: { id: true, Alimento: true, Energia__Kcal_: true, grupo: true }
     });
-
-    // Encontra o alimento correspondente dentro do array retornado
-    return alimentos.find(a => a.Alimento.toLowerCase().trim() === nomeLower || a.Alimento.toLowerCase().trim().includes(nomeLower)) || null;
-
+    return alimentos.find(a => a.Alimento && a.Alimento.toLowerCase().includes(nomeLower)) || null;
   } catch (error) {
     console.error("Erro ao buscar alimento no banco unificado:", error);
     return null;
@@ -659,8 +663,7 @@ app.get("/api/sugestoes", async (req, res) => {
 });
 
 app.get("/api/equivalencia", async (req, res) => {
-  const { baseFood, baseQuantity, substituteFood, pacienteId, confirmed } = req.query;
-  const confirmado = confirmed || req.query.confirmado;
+  const { baseFood, baseQuantity, substituteFood, pacienteId, confirmado } = req.query;
   
   if (!baseFood || !baseQuantity || !substituteFood) {
     return res.status(400).json({ error: "Parâmetros obrigatórios ausentes." });
@@ -689,6 +692,7 @@ app.get("/api/equivalencia", async (req, res) => {
 
     const foiConfirmadoPeloNutri = confirmado === true || confirmado === 'true';
 
+    // Bloqueio do paciente inteligente
     if (gruposDiferentes && pacienteId && !foiConfirmadoPeloNutri) {
       try {
         const paciente = await prisma.pacientes.findUnique({
@@ -704,6 +708,7 @@ app.get("/api/equivalencia", async (req, res) => {
       }
     }
 
+    // RESPOSTA DE RETORNO DO BLOQUEIO
     if (gruposDiferentes && bloquearTrocaDiferente) {
       return res.status(200).json({
         permitido: false,
