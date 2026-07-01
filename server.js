@@ -121,7 +121,13 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(400).json({ error: "Nome, e-mail, senha e sexo são obrigatórios." });
     }
 
-    if (sexo !== "Feminino" && sexo !== "Masculino") {
+    // Normalização inteligente do campo sexo
+    let sexoFormatado = sexo;
+    if (sexo && typeof sexo === 'string') {
+      sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
+    }
+
+    if (sexoFormatado !== "Feminino" && sexoFormatado !== "Masculino") {
       return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
     }
 
@@ -139,7 +145,7 @@ app.post("/api/auth/register", async (req, res) => {
         email: email.trim().toLowerCase(),
         senha_hash,
         crn: crn || null,
-        sexo,
+        sexo: sexoFormatado,
         plano: "free",
         ativo: true,
       },
@@ -468,8 +474,13 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
       boolBloqueio = true;
     }
 
-    // Validação se o sexo foi modificado e enviado
-    if (sexo && sexo !== "Feminino" && sexo !== "Masculino") {
+    // Normalização e validação se o sexo foi modificado e enviado
+    let sexoFormatado = sexo;
+    if (sexo && typeof sexo === 'string') {
+      sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
+    }
+
+    if (sexoFormatado && sexoFormatado !== "Feminino" && sexoFormatado !== "Masculino") {
       return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
     }
 
@@ -483,7 +494,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
         logo_url: logo_url || undefined, 
         crn: crn || null,
         bloquear_grupos_diferentes: boolBloqueio,
-        sexo: sexo || undefined
+        sexo: sexoFormatado || undefined
       },
     });
 
@@ -510,7 +521,13 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
       return res.status(400).json({ error: "Campos obrigatórios ausentes (Nome, E-mail, Telefone, Data de Nascimento ou Sexo)." });
     }
 
-    if (sexo !== "Feminino" && sexo !== "Masculino") {
+    // Normalização inteligente do campo sexo
+    let sexoFormatado = sexo;
+    if (sexo && typeof sexo === 'string') {
+      sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
+    }
+
+    if (sexoFormatado !== "Feminino" && sexoFormatado !== "Masculino") {
       return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
     }
 
@@ -539,7 +556,7 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
         senha_hash, 
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
-        sexo,
+        sexo: sexoFormatado,
       },
     });
 
@@ -569,7 +586,13 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
 
     const filtro = req.nutri.role === 'admin' ? { id: parseInt(id) } : { id: parseInt(id), nutricionista_id: req.nutri.id };
 
-    if (sexo && sexo !== "Feminino" && sexo !== "Masculino") {
+    // Normalização inteligente do campo sexo
+    let sexoFormatado = sexo;
+    if (sexo && typeof sexo === 'string') {
+      sexoFormatado = sexo.trim().charAt(0).toUpperCase() + sexo.trim().slice(1).toLowerCase();
+    }
+
+    if (sexoFormatado && sexoFormatado !== "Feminino" && sexoFormatado !== "Masculino") {
       return res.status(400).json({ error: "O campo sexo deve ser 'Feminino' ou 'Masculino'." });
     }
 
@@ -581,7 +604,7 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
         telefone: telefone ? telefone.replace(/\D/g, "") : undefined,
         data_nascimento: data_nascimento ? new Date(data_nascimento) : null,
         observacoes: observacoes || null,
-        sexo: sexo || undefined,
+        sexo: sexoFormatado || undefined,
       },
     });
 
@@ -676,7 +699,7 @@ app.get("/api/equivalencia", async (req, res) => {
         });
         
         if (paciente?.nutricionista?.bloquear_grupos_diferentes === true) {
-          blockearTrocaDiferente = true;
+          bloquearTrocaDiferente = true;
         }
       } catch (e) {
         console.warn("[Aviso] Erro ao buscar configuração de bloqueio do nutricionista:", e.message);
