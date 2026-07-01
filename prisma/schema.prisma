@@ -48,7 +48,6 @@ model suplementos {
   id             Int     @id @default(autoincrement())
 }
 
-
 model proteina {
   Alimento       String? @db.Text
   Quantidade__g_ Int?    @map("Quantidade (g)")
@@ -89,35 +88,36 @@ model verduras__hortali_as_e_derivados {
 }
 
 model nutricionistas {
-  id            Int         @id @default(autoincrement())
-  nome          String
-  email         String      @unique
-  senha_hash    String
-  crn           String?
-  especialidade String?
-  whatsapp      String?
-  instagram     String?
-  logo_url      String?     @db.Text
-  plano         String      @default("free")
-  ativo         Boolean     @default(true)
-  created_at    DateTime    @default(now())
-  updated_at    DateTime    @updatedAt
-  pacientes     pacientes[]
+  id                         Int         @id @default(autoincrement())
+  nome                       String
+  email                      String      @unique
+  senha_hash                 String
+  crn                        String?
+  especialidade              String?
+  whatsapp                   String?
+  instagram                  String?
+  logo_url                   String?     @db.Text
+  plano                      String      @default("free")
+  ativo                      Boolean     @default(true)
+  created_at                 DateTime    @default(now())
+  updated_at                 DateTime    @updatedAt
+  bloquear_grupos_diferentes Boolean     @default(false)
+  pacientes                  pacientes[]
 }
 
 model pacientes {
-  id              Int            @id @default(autoincrement())
+  id               Int            @id @default(autoincrement())
   nutricionista_id Int
-  nome            String
-  email           String         @unique
-  telefone        String
-  senha_hash      String
-  data_nascimento DateTime?
-  observacoes     String?        @db.Text
-  created_at      DateTime       @default(now())
-  updated_at      DateTime       @updatedAt
-  nutricionista   nutricionistas @relation(fields: [nutricionista_id], references: [id])
-  logs_acesso     logs_acesso[]
+  nome             String
+  email            String         @unique
+  telefone         String
+  senha_hash       String
+  data_nascimento  DateTime?
+  observacoes      String?        @db.Text
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+  nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
+  logs_acesso      logs_acesso[]
 }
 
 model administradores {
@@ -130,8 +130,8 @@ model administradores {
 }
 
 model logs_acesso {
-  id          Int       @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   paciente_id Int
-  data_acesso DateTime  @default(now())
+  data_acesso DateTime @default(now())
   paciente    pacientes @relation(fields: [paciente_id], references: [id], onDelete: Cascade)
 }
