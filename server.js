@@ -18,7 +18,7 @@ app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET || "chave_secreta_padrao_equivale_saas";
 
 // ==========================================
-//        CONFIGURAÇÃO DO CLOUDINARY
+//         CONFIGURAÇÃO DO CLOUDINARY
 // ==========================================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dpop2y72p',
@@ -27,7 +27,7 @@ cloudinary.config({
 });
 
 // ==========================================
-//                  MIDDLEWARES
+//                 MIDDLEWARES
 // ==========================================
 
 function verificarToken(req, res, next) {
@@ -464,10 +464,10 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
 
     let boolBloqueio = false;
     if (
-      bloqueiar_grupos_diferentes === true || 
-      bloqueiar_grupos_diferentes === 'true' || 
-      bloqueiar_grupos_diferentes === 1 || 
-      bloqueiar_grupos_diferentes === '1'
+      bloquear_grupos_diferentes === true || 
+      bloquear_grupos_diferentes === 'true' || 
+      bloquear_grupos_diferentes === 1 || 
+      bloquear_grupos_diferentes === '1'
     ) {
       boolBloqueio = true;
     }
@@ -632,12 +632,11 @@ async function buscarAlimento(nomeAlimento) {
   try {
     const nomeLower = nomeAlimento.toLowerCase().trim();
     
-    // CORREÇÃO AQUI: findFirst seguro utilizando o modo 'insensitive' nativo do Prisma
+    // CORREÇÃO: Removido o 'mode: insensitive' que quebrava no MySQL
     return await prisma.banco_equivale.findFirst({
       where: {
         Alimento: {
-          contains: nomeLower,
-          mode: 'insensitive'
+          contains: nomeLower
         }
       },
       select: { id: true, Alimento: true, Energia__Kcal_: true, grupo: true }
@@ -652,11 +651,11 @@ app.get("/api/sugestoes", async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ error: "Query obrigatória" });
   try {
+    // CORREÇÃO: Removido o 'mode: insensitive' que causava erro 500 no MySQL
     const alimentos = await prisma.banco_equivale.findMany({
       where: { 
         Alimento: { 
-          contains: query.toLowerCase().trim(),
-          mode: 'insensitive'
+          contains: query.toLowerCase().trim()
         } 
       },
       select: { Alimento: true },
@@ -664,6 +663,7 @@ app.get("/api/sugestoes", async (req, res) => {
     });
     res.json({ sugestoes: alimentos.map(a => a.Alimento) });
   } catch (error) {
+    console.error("Erro interno na rota /api/sugestoes:", error);
     res.status(500).json({ error: "Erro ao buscar sugestões no banco unificado." });
   }
 });
