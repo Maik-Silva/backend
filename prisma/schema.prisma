@@ -94,12 +94,13 @@ model nutricionistas {
   senha_hash                 String
   crn                        String?
   especialidade              String?
-  sexo                       String?     // Opcional para não quebrar os registros antigos
+  sexo                       String?     
   whatsapp                   String?
   instagram                  String?
   logo_url                   String?     @db.Text
   plano                      String      @default("free")
   ativo                      Boolean     @default(true)
+  limite_pacientes           Int         @default(5)
   created_at                 DateTime    @default(now())
   updated_at                 DateTime    @updatedAt
   bloquear_grupos_diferentes Boolean     @default(false)
@@ -114,7 +115,7 @@ model pacientes {
   telefone         String
   senha_hash       String
   data_nascimento  DateTime?
-  sexo             String?        // Opcional para não quebrar os registros antigos
+  sexo             String?        
   observacoes      String?        @db.Text
   created_at       DateTime       @default(now())
   updated_at       DateTime       @updatedAt
