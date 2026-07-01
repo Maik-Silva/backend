@@ -27,7 +27,7 @@ cloudinary.config({
 });
 
 // ==========================================
-//                 MIDDLEWARES
+//                  MIDDLEWARES
 // ==========================================
 
 function verificarToken(req, res, next) {
@@ -336,7 +336,7 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
 });
 
 // ==========================================
-//         ROTAS DO ADMINISTRADOR
+//          ROTAS DO ADMINISTRADOR
 // ==========================================
 
 app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
@@ -504,7 +504,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
 });
 
 // ==========================================
-//                ROTAS DE PACIENTES
+//                 ROTAS DE PACIENTES
 // ==========================================
 
 app.post("/api/pacientes", verificarToken, async (req, res) => {
@@ -622,16 +622,21 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
 });
 
 // ==========================================
-//        ALIMENTOS E EQUIVALÊNCIAS
+//         ALIMENTOS E EQUIVALÊNCIAS
 // ==========================================
 
 async function buscarAlimento(nomeAlimento) {
   try {
     const nomeLower = nomeAlimento.toLowerCase().trim();
-    return await prisma.banco_equivale.findFirst({
-      where: { Alimento: { contains: nomeLower } },
+    
+    // RESTAURADO: Traz o mapeamento total para a memória do Node conforme esperado pelo front-end anterior
+    const alimentos = await prisma.banco_equivale.findMany({
       select: { id: true, Alimento: true, Energia__Kcal_: true, grupo: true }
     });
+
+    // Encontra o alimento correspondente dentro do array retornado
+    return alimentos.find(a => a.Alimento.toLowerCase().trim() === nomeLower || a.Alimento.toLowerCase().trim().includes(nomeLower)) || null;
+
   } catch (error) {
     console.error("Erro ao buscar alimento no banco unificado:", error);
     return null;
@@ -654,7 +659,8 @@ app.get("/api/sugestoes", async (req, res) => {
 });
 
 app.get("/api/equivalencia", async (req, res) => {
-  const { baseFood, baseQuantity, substituteFood, pacienteId, confirmado } = req.query;
+  const { baseFood, baseQuantity, substituteFood, pacienteId, confirmed } = req.query;
+  const confirmado = confirmed || req.query.confirmado;
   
   if (!baseFood || !baseQuantity || !substituteFood) {
     return res.status(400).json({ error: "Parâmetros obrigatórios ausentes." });
@@ -691,7 +697,7 @@ app.get("/api/equivalencia", async (req, res) => {
         });
         
         if (paciente?.nutricionista?.bloquear_grupos_diferentes === true) {
-          bloquearTrocaDiferente = true;
+          blockearTrocaDiferente = true;
         }
       } catch (e) {
         console.warn("[Aviso] Erro ao buscar configuração de bloqueio do nutricionista:", e.message);
