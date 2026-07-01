@@ -94,6 +94,7 @@ model nutricionistas {
   senha_hash                 String
   crn                        String?
   especialidade              String?
+  sexo                       String?     // Opcional para não quebrar os registros antigos
   whatsapp                   String?
   instagram                  String?
   logo_url                   String?     @db.Text
@@ -113,6 +114,7 @@ model pacientes {
   telefone         String
   senha_hash       String
   data_nascimento  DateTime?
+  sexo             String?        // Opcional para não quebrar os registros antigos
   observacoes      String?        @db.Text
   created_at       DateTime       @default(now())
   updated_at       DateTime       @updatedAt
