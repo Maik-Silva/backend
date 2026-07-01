@@ -40,10 +40,11 @@ function verificarToken(req, res, next) {
 
   try {
     const verificado = jwt.verify(token, JWT_SECRET);
-    if (verificado.role === 'paciente') {
-      return res.status(403).json({ error: "Acesso negado. Rota exclusiva para nutricionistas." });
+    // CORREÇÃO: Admin também precisa ter acesso a rotas de gerenciamento de pacientes para evitar erro de token
+    if (verificado.role !== 'nutri' && verificado.role !== 'admin') {
+      return res.status(403).json({ error: "Acesso negado. Rota exclusiva para nutricionistas/administradores." });
     }
-    req.nutri = verificado;
+    req.nutri = verificado; // Mantém a compatibilidade de contexto
     next();
   } catch (error) {
     return res.status(403).json({ error: "Sessão expirada ou token inválido." });
@@ -322,6 +323,10 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
   }
 });
 
+// ==========================================
+//             ROTAS DO ADMINISTRADOR
+// ==========================================
+
 app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
   try {
     const totalNutris = await prisma.nutricionistas.count();
@@ -333,6 +338,7 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
         id: true,
         nome: true,
         email: true,
+        limite_pacientes: true, // ATUALIZAÇÃO: Retorna o limite dinâmico para o front mapear o progresso correto (ex: 12/5, 4/10)
         _count: { select: { pacientes: true } }
       },
       orderBy: { nome: 'asc' }
@@ -342,6 +348,7 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       id: nutri.id,
       nome: nutri.nome,
       email: nutri.email,
+      limitePacientes: nutri.limite_pacientes || 5, // Fallback caso esteja nulo ou não migrado
       totalPacientes: nutri._count.pacientes
     }));
 
@@ -370,6 +377,49 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
   }
 });
 
+// NOVA ROTA: Altera o limite de pacientes de um nutricionista específico
+app.put("/api/admin/nutricionistas/:id/limite", verificarTokenAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limite_pacientes } = req.body;
+
+    if (limite_pacientes === undefined || isNaN(parseInt(limite_pacientes))) {
+      return res.status(400).json({ error: "O limite de pacientes informado é inválido." });
+    }
+
+    const nutriAtualizado = await prisma.nutricionistas.update({
+      where: { id: parseInt(id) },
+      data: { limite_pacientes: parseInt(limite_pacientes) }
+    });
+
+    res.json({ message: "Limite do nutricionista atualizado com sucesso!", nutricionista: nutriAtualizado });
+  } catch (error) {
+    console.error("Erro ao atualizar limite:", error);
+    res.status(500).json({ error: "Erro interno ao atualizar limite do plano." });
+  }
+});
+
+// NOVA ROTA: Listagem geral para a nova aba "Usuários" da área admin
+app.get("/api/admin/usuarios", verificarTokenAdmin, async (req, res) => {
+  try {
+    const nutricionistas = await prisma.nutricionistas.findMany({
+      select: { id: true, nome: true, email: true, ativo: true, crn: true }
+    });
+    const pacientes = await prisma.pacientes.findMany({
+      select: { id: true, nome: true, email: true, telefone: true, nutricionista: { select: { nome: true } } }
+    });
+
+    res.json({ nutricionistas, pacientes });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao listar usuários globais." });
+  }
+});
+
+
+// ==========================================
+//             ROTAS DE PACIENTES
+// ==========================================
+
 app.post("/api/pacientes", verificarToken, async (req, res) => {
   try {
     const { nome, email, telefone, data_nascimento, observacoes } = req.body;
@@ -379,9 +429,17 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
       return res.status(400).json({ error: "Campos obrigatórios ausentes." });
     }
 
+    // ATUALIZAÇÃO: Busca o limite dinâmico configurado para o nutricionista em vez do '5' estático
+    const nutriConfig = await prisma.nutricionistas.findUnique({
+      where: { id: nutricionista_id },
+      select: { limite_pacientes: true }
+    });
+
+    const limiteMaximo = nutriConfig?.limite_pacientes || 5;
+
     const contagemPacientes = await prisma.pacientes.count({ where: { nutricionista_id } });
-    if (contagemPacientes >= 5) {
-      return res.status(403).json({ error: "Limite de 5 pacientes atingido no plano Beta." });
+    if (contagemPacientes >= limiteMaximo) {
+      return res.status(403).json({ error: `Limite de ${limiteMaximo} pacientes atingido para o seu plano.` });
     }
 
     const senhaPura = telefone.replace(/\D/g, ""); 
@@ -424,8 +482,11 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
     const { id } = req.params;
     const { nome, email, telefone, data_nascimento, observacoes } = req.body;
 
+    // Ajustado o update para aceitar tanto a alteração do próprio nutri logado quanto a do Admin bypassando o ID do nutri se necessário
+    const filtro = req.nutri.role === 'admin' ? { id: parseInt(id) } : { id: parseInt(id), nutricionista_id: req.nutri.id };
+
     const pacienteAtualizado = await prisma.pacientes.update({
-      where: { id: parseInt(id), nutricionista_id: req.nutri.id },
+      where: filtro,
       data: {
         nome,
         email: email ? email.trim().toLowerCase() : undefined,
@@ -443,8 +504,10 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
 
 app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
   try {
+    const filtro = req.nutri.role === 'admin' ? { id: parseInt(req.params.id) } : { id: parseInt(req.params.id), nutricionista_id: req.nutri.id };
+    
     await prisma.pacientes.delete({
-      where: { id: parseInt(req.params.id), nutricionista_id: req.nutri.id },
+      where: filtro,
     });
     res.json({ message: "Paciente excluído com sucesso!" });
   } catch (error) {
@@ -454,6 +517,9 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
 
 app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, res) => {
   try {
+    const {0: id_body} = req.body; // fallback
+    const targetId = req.nutri.role === 'admin' && req.body.id ? parseInt(req.body.id) : req.nutri.id;
+
     const { especialidade, whatsapp, instagram, nome, crn, bloquear_grupos_diferentes } = req.body;
     let logo_url = req.body.logo_url;
 
@@ -464,7 +530,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
     const boolBloqueio = bloquear_grupos_diferentes === true || bloquear_grupos_diferentes === 'true';
 
     const nutriAtualizado = await prisma.nutricionistas.update({
-      where: { id: req.nutri.id },
+      where: { id: targetId },
       data: { 
         nome, 
         especialidade, 
@@ -484,8 +550,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
 
 app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
   try {
-    const nutri = await prisma.nutricionistas.findUnique({ where: { id: req.nutri.id } });
-    res.json(nutri);
+    res.json(await prisma.nutricionistas.findUnique({ where: { id: req.nutri.id } }));
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar perfil." });
   }
@@ -497,8 +562,7 @@ async function buscarAlimento(nomeAlimento) {
     const alimentos = await prisma.banco_equivale.findMany({
       select: { id: true, Alimento: true, Energia__Kcal_: true, grupo: true }
     });
-    const encontrado = alimentos.find(a => a.Alimento && a.Alimento.toLowerCase().includes(nomeLower));
-    return encontrado || null;
+    return alimentos.find(a => a.Alimento && a.Alimento.toLowerCase().includes(nomeLower)) || null;
   } catch (error) {
     console.error("Erro ao buscar alimento no banco unificado:", error);
     return null;
@@ -514,8 +578,7 @@ app.get("/api/sugestoes", async (req, res) => {
       select: { Alimento: true },
       take: 8
     });
-    const listaSugestoes = alimentos.map(a => a.Alimento);
-    res.json({ sugestoes: listaSugestoes });
+    res.json({ sugestoes: alimentos.map(a => a.Alimento) });
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar sugestões no banco unificado." });
   }
@@ -576,9 +639,6 @@ app.get("/api/equivalencia", async (req, res) => {
       });
     }
 
-    // ==============================================================
-    // CORREÇÃO APLICADA AQUI: Interpolação do resultado na string
-    // ==============================================================
     const mensagemAlerta = gruposDiferentes 
       ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado equivalente é: ${resultadoFormatado}g de ${sub.Alimento}.`
       : "";
