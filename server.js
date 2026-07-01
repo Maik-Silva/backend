@@ -40,11 +40,10 @@ function verificarToken(req, res, next) {
 
   try {
     const verificado = jwt.verify(token, JWT_SECRET);
-    // CORREÇÃO: Admin também precisa ter acesso a rotas de gerenciamento de pacientes para evitar erro de token
     if (verificado.role !== 'nutri' && verificado.role !== 'admin') {
       return res.status(403).json({ error: "Acesso negado. Rota exclusiva para nutricionistas/administradores." });
     }
-    req.nutri = verificado; // Mantém a compatibilidade de contexto
+    req.nutri = verificado;
     next();
   } catch (error) {
     return res.status(403).json({ error: "Sessão expirada ou token inválido." });
@@ -338,7 +337,7 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
         id: true,
         nome: true,
         email: true,
-        limite_pacientes: true, // ATUALIZAÇÃO: Retorna o limite dinâmico para o front mapear o progresso correto (ex: 12/5, 4/10)
+        limite_pacientes: true,
         _count: { select: { pacientes: true } }
       },
       orderBy: { nome: 'asc' }
@@ -348,7 +347,7 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       id: nutri.id,
       nome: nutri.nome,
       email: nutri.email,
-      limitePacientes: nutri.limite_pacientes || 5, // Fallback caso esteja nulo ou não migrado
+      limitePacientes: nutri.limite_pacientes || 5,
       totalPacientes: nutri._count.pacientes
     }));
 
@@ -377,7 +376,6 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
   }
 });
 
-// NOVA ROTA: Altera o limite de pacientes de um nutricionista específico
 app.put("/api/admin/nutricionistas/:id/limite", verificarTokenAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -392,14 +390,13 @@ app.put("/api/admin/nutricionistas/:id/limite", verificarTokenAdmin, async (req,
       data: { limite_pacientes: parseInt(limite_pacientes) }
     });
 
-    res.json({ message: "Limite do nutricionista atualizado com sucesso!", nutricionista: nutriAtualizado });
+    res.json({ message: "Limite do nutricionista updated!", nutricionista: nutriAtualizado });
   } catch (error) {
     console.error("Erro ao atualizar limite:", error);
-    res.status(500).json({ error: "Erro interno ao atualizar limite do plano." });
+    res.status(500).json({ error: "Erro interno ao atualizar limite." });
   }
 });
 
-// NOVA ROTA: Listagem geral para a nova aba "Usuários" da área admin
 app.get("/api/admin/usuarios", verificarTokenAdmin, async (req, res) => {
   try {
     const nutricionistas = await prisma.nutricionistas.findMany({
@@ -417,6 +414,67 @@ app.get("/api/admin/usuarios", verificarTokenAdmin, async (req, res) => {
 
 
 // ==========================================
+//     PERFIL E VISÃO GERAL DO NUTRICIONISTA
+// ==========================================
+
+app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
+  try {
+    const nutri = await prisma.nutricionistas.findUnique({ 
+      where: { id: req.nutri.id } 
+    });
+
+    if (!nutri) {
+      return res.status(404).json({ error: "Nutricionista não encontrado." });
+    }
+
+    // ALTERAÇÃO COMPATÍVEL COM O FRONT MOBILE:
+    // Fornece total_sugestoes e sugestoes_realizadas na raiz para bater com o destruct do React Native
+    res.json({
+      ...nutri,
+      total_sugestoes: 0,
+      sugestoes_realizadas: 0
+    });
+  } catch (error) {
+    console.error("Erro ao buscar perfil do nutricionista:", error);
+    res.status(500).json({ error: "Erro interno ao buscar perfil." });
+  }
+});
+
+app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, res) => {
+  try {
+    const targetId = req.nutri.role === 'admin' && req.body.id ? parseInt(req.body.id) : req.nutri.id;
+    const {0: id_body} = req.body;
+
+    const { especialidade, whatsapp, instagram, nome, crn, bloquear_grupos_diferentes } = req.body;
+    let logo_url = req.body.logo_url;
+
+    if (req.file) {
+      logo_url = req.file.path; 
+    }
+
+    const boolBloqueio = bloquear_grupos_diferentes === true || bloquear_grupos_diferentes === 'true';
+
+    const nutriAtualizado = await prisma.nutricionistas.update({
+      where: { id: targetId },
+      data: { 
+        nome, 
+        especialidade, 
+        whatsapp, 
+        instagram, 
+        logo_url, 
+        crn,
+        bloquear_grupos_diferentes: boolBloqueio
+      },
+    });
+    res.json({ message: "Perfil updated!", nutricionista: nutriAtualizado });
+  } catch (error) {
+    console.error("Erro ao salvar perfil:", error);
+    res.status(500).json({ error: "Erro ao salvar perfil." });
+  }
+});
+
+
+// ==========================================
 //             ROTAS DE PACIENTES
 // ==========================================
 
@@ -429,7 +487,6 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
       return res.status(400).json({ error: "Campos obrigatórios ausentes." });
     }
 
-    // ATUALIZAÇÃO: Busca o limite dinâmico configurado para o nutricionista em vez do '5' estático
     const nutriConfig = await prisma.nutricionistas.findUnique({
       where: { id: nutricionista_id },
       select: { limite_pacientes: true }
@@ -482,7 +539,6 @@ app.put("/api/pacientes/:id", verificarToken, async (req, res) => {
     const { id } = req.params;
     const { nome, email, telefone, data_nascimento, observacoes } = req.body;
 
-    // Ajustado o update para aceitar tanto a alteração do próprio nutri logado quanto a do Admin bypassando o ID do nutri se necessário
     const filtro = req.nutri.role === 'admin' ? { id: parseInt(id) } : { id: parseInt(id), nutricionista_id: req.nutri.id };
 
     const pacienteAtualizado = await prisma.pacientes.update({
@@ -515,46 +571,10 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
   }
 });
 
-app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, res) => {
-  try {
-    const {0: id_body} = req.body; // fallback
-    const targetId = req.nutri.role === 'admin' && req.body.id ? parseInt(req.body.id) : req.nutri.id;
 
-    const { especialidade, whatsapp, instagram, nome, crn, bloquear_grupos_diferentes } = req.body;
-    let logo_url = req.body.logo_url;
-
-    if (req.file) {
-      logo_url = req.file.path; 
-    }
-
-    const boolBloqueio = bloquear_grupos_diferentes === true || bloquear_grupos_diferentes === 'true';
-
-    const nutriAtualizado = await prisma.nutricionistas.update({
-      where: { id: targetId },
-      data: { 
-        nome, 
-        especialidade, 
-        whatsapp, 
-        instagram, 
-        logo_url, 
-        crn,
-        bloquear_grupos_diferentes: boolBloqueio
-      },
-    });
-    res.json({ message: "Perfil updated!", nutricionista: nutriAtualizado });
-  } catch (error) {
-    console.error("Erro ao salvar perfil:", error);
-    res.status(500).json({ error: "Erro ao salvar perfil." });
-  }
-});
-
-app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
-  try {
-    res.json(await prisma.nutricionistas.findUnique({ where: { id: req.nutri.id } }));
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao buscar perfil." });
-  }
-});
+// ==========================================
+//        ALIMENTOS E EQUIVALÊNCIAS
+// ==========================================
 
 async function buscarAlimento(nomeAlimento) {
   try {
