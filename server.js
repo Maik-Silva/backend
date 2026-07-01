@@ -490,7 +490,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
         nome: nome || undefined,
         especialidade: especialidade || null,
         whatsapp: whatsapp || null,
-        instagram: instagram || null,
+        instagram: null || instagram,
         logo_url: logo_url || undefined, 
         crn: crn || null,
         bloquear_grupos_diferentes: boolBloqueio,
@@ -509,7 +509,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
 
 
 // ==========================================
-//               ROTAS DE PACIENTES
+//                ROTAS DE PACIENTES
 // ==========================================
 
 app.post("/api/pacientes", verificarToken, async (req, res) => {
@@ -562,6 +562,7 @@ app.post("/api/pacientes", verificarToken, async (req, res) => {
 
     res.status(201).json({ message: "Paciente cadastrado com sucesso!", paciente: novoPaciente });
   } catch (error) {
+    console.error("Erro crítico detalhado ao criar paciente no Prisma:", error);
     if (error.code === 'P2002') return res.status(400).json({ error: "Este e-mail já está cadastrado." });
     res.status(500).json({ error: "Erro ao cadastrar paciente." });
   }
