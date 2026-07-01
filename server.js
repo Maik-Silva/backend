@@ -730,7 +730,7 @@ app.get("/api/equivalencia", async (req, res) => {
     }
 
     const mensagemAlerta = gruposDiferentes 
-      ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado equivalente é: ${resultadoFormatado}g de ${sub.Alimento}.`
+      ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado foi calculado com sucesso.`
       : "";
 
     const payloadUnificado = {
