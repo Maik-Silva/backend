@@ -427,8 +427,6 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
       return res.status(404).json({ error: "Nutricionista não encontrado." });
     }
 
-    // ALTERAÇÃO COMPATÍVEL COM O FRONT MOBILE:
-    // Fornece total_sugestoes e sugestoes_realizadas na raiz para bater com o destruct do React Native
     res.json({
       ...nutri,
       total_sugestoes: 0,
@@ -443,7 +441,6 @@ app.get("/api/nutri/perfil", verificarToken, async (req, res) => {
 app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, res) => {
   try {
     const targetId = req.nutri.role === 'admin' && req.body.id ? parseInt(req.body.id) : req.nutri.id;
-    const {0: id_body} = req.body;
 
     const { especialidade, whatsapp, instagram, nome, crn, bloquear_grupos_diferentes } = req.body;
     let logo_url = req.body.logo_url;
@@ -452,23 +449,35 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
       logo_url = req.file.path; 
     }
 
-    const boolBloqueio = bloquear_grupos_diferentes === true || bloquear_grupos_diferentes === 'true';
+    // TRATAMENTO DO BOOLEANO SEGURO:
+    let boolBloqueio = false;
+    if (
+      bloquear_grupos_diferentes === true || 
+      bloquear_grupos_diferentes === 'true' || 
+      bloquear_grupos_diferentes === 1 || 
+      bloquear_grupos_diferentes === '1'
+    ) {
+      boolBloqueio = true;
+    }
 
     const nutriAtualizado = await prisma.nutricionistas.update({
       where: { id: targetId },
       data: { 
-        nome, 
-        especialidade, 
-        whatsapp, 
-        instagram, 
-        logo_url, 
-        crn,
+        nome: nome || undefined,
+        especialidade: especialidade || null,
+        whatsapp: whatsapp || null,
+        instagram: instagram || null,
+        logo_url: logo_url || undefined, 
+        crn: crn || null,
         bloquear_grupos_diferentes: boolBloqueio
       },
     });
-    res.json({ message: "Perfil updated!", nutricionista: nutriAtualizado });
+
+    console.log(`[Sucesso] Configuração de bloqueio do Nutri ID ${targetId} atualizada para: ${boolBloqueio}`);
+
+    res.json({ message: "Perfil atualizado com sucesso!", nutricionista: nutriAtualizado });
   } catch (error) {
-    console.error("Erro ao salvar perfil:", error);
+    console.error("Erro detalhado ao salvar perfil:", error);
     res.status(500).json({ error: "Erro ao salvar perfil." });
   }
 });
@@ -634,6 +643,7 @@ app.get("/api/equivalencia", async (req, res) => {
 
     const foiConfirmadoPeloNutri = confirmado === true || confirmado === 'true';
 
+    // Bloqueio do paciente inteligente
     if (gruposDiferentes && pacienteId && !foiConfirmadoPeloNutri) {
       try {
         const paciente = await prisma.pacientes.findUnique({
@@ -649,12 +659,14 @@ app.get("/api/equivalencia", async (req, res) => {
       }
     }
 
+    // RESPOSTA DE RETORNO DO BLOQUEIO
     if (gruposDiferentes && bloquearTrocaDiferente) {
-      return res.json({
+      return res.status(200).json({
         permitido: false,
         bloqueado: true,
         gruposDiferentes: true,
-        mensagem: `⚠️ Bloqueado: Você está tentando trocar '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}).`,
+        title: "Substituição Não Permitida",
+        mensagem: "Não é permitida a troca de alimentos de grupos diferentes. Fale com seu nutricionista.",
         detalhes: "Seu nutricionista bloqueou substituições fora da mesma categoria nutricional."
       });
     }
@@ -682,11 +694,7 @@ app.get("/api/equivalencia", async (req, res) => {
       grupo_substituto: sub.grupo
     };
 
-    res.json({
-      ...payloadUnificado,
-      data: payloadUnificado,
-      equivalencia: payloadUnificado
-    });
+    res.json(payloadUnificado);
 
   } catch (error) {
     console.error("Erro na rota de equivalência unificada:", error);
