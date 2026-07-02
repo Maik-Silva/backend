@@ -27,7 +27,7 @@ cloudinary.config({
 });
 
 // ==========================================
-//                 MIDDLEWARES
+//                  MIDDLEWARES
 // ==========================================
 
 function verificarToken(req, res, next) {
@@ -105,7 +105,7 @@ app.get("/", (req, res) => {
 });
 
 // ==========================================
-//        AUTENTICAÇÃO NUTRICIONISTA
+//         AUTENTICAÇÃO NUTRICIONISTA
 // ==========================================
 
 app.post("/api/auth/register", async (req, res) => {
@@ -189,6 +189,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     res.json({
       token,
+      cookie_expiration: "7d",
       nutricionista: {
         id: nutri.id,
         nome: nutri.nome,
@@ -364,7 +365,8 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       totalPacientes: nutri._count.pacientes
     }));
 
-    const acessosRecentes = prisma.logs_acesso ? await prisma.logs_acesso.findMany({
+    // 🌟 CORRIGIDO: Agora inclui os dados internos do Nutricionista através do relacionamento com o Paciente
+    const acessosBanco = prisma.logs_acesso ? await prisma.logs_acesso.findMany({
       take: 10,
       orderBy: { data_acesso: 'desc' },
       select: {
@@ -379,12 +381,21 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       }
     }) : [];
 
+    // Formata os acessos no padrão que o frontend espera (Opção A)
+    const acessosRecentes = acessosBanco.map(acesso => ({
+      id: acesso.id,
+      data_acesso: acesso.data_acesso,
+      patient: acesso.paciente?.nome || "Desconhecido",
+      nutricionista: acesso.paciente?.nutricionista?.nome || "Desconhecido"
+    }));
+
     res.json({
       cards: { totalNutris, totalPacientes, totalAcessos },
       nutricionistas: nutricionistasFormatados,
       acessosRecentes
     });
   } catch (error) {
+    console.error("Erro ao buscar métricas do admin:", error);
     res.status(500).json({ error: "Erro ao buscar métricas." });
   }
 });
@@ -425,6 +436,28 @@ app.get("/api/admin/usuarios", verificarTokenAdmin, async (req, res) => {
   }
 });
 
+// 🌟 NOVA ROTA ADICIONADA: Fornece a lista de nutricionistas direto para as requisições de relatórios/gerenciamento do front
+app.get("/api/admin/nutricionistas", verificarTokenAdmin, async (req, res) => {
+  try {
+    const listaNutris = await prisma.nutricionistas.findMany({
+      select: { 
+        id: true, 
+        nome: true, 
+        email: true, 
+        ativo: true, 
+        crn: true, 
+        sexo: true,
+        plano: true 
+      },
+      orderBy: { nome: 'asc' }
+    });
+
+    res.json({ nutricionistas: listaNutris });
+  } catch (error) {
+    console.error("Erro ao listar nutricionistas para o admin:", error);
+    res.status(500).json({ error: "Erro ao carregar lista de nutricionistas." });
+  }
+});
 
 // ==========================================
 //     PERFIL E VISÃO GERAL DO NUTRICIONISTA
@@ -503,7 +536,6 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
     res.status(500).json({ error: "Erro ao salvar perfil." });
   }
 });
-
 
 // ==========================================
 //                 ROTAS DE PACIENTES
@@ -625,14 +657,13 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
 
 
 // ==========================================
-//        ALIMENTOS E EQUIVALÊNCIAS
+//         ALIMENTOS E EQUIVALÊNCIAS
 // ==========================================
 
 async function buscarAlimento(nomeAlimento) {
   try {
     const nomeLower = nomeAlimento.toLowerCase().trim();
     
-    // CORREÇÃO: Removido o 'mode: insensitive' que causava quebra no MySQL
     return await prisma.banco_equivale.findFirst({
       where: {
         Alimento: {
@@ -651,7 +682,6 @@ app.get("/api/sugestoes", async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ error: "Query obrigatória" });
   try {
-    // CORREÇÃO: Removido o 'mode: insensitive' que causava erro 500 no MySQL
     const alimentos = await prisma.banco_equivale.findMany({
       where: { 
         Alimento: { 
@@ -669,7 +699,6 @@ app.get("/api/sugestoes", async (req, res) => {
 });
 
 app.get("/api/equivalencia", async (req, res) => {
-  // 👇 CORREÇÃO CRÍTICA: Desativa totalmente o cache HTTP na rota para evitar o Status 304 do navegador
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
@@ -722,7 +751,7 @@ app.get("/api/equivalencia", async (req, res) => {
       return res.status(200).json({
         permitido: false,
         bloqueado: true,
-        gruposDiferentes: true,
+        groupsDiferentes: true,
         title: "Substituição Não Permitida",
         mensagem: "Não é permitida a troca de alimentos de grupos diferentes. Fale com seu nutricionista.",
         detalhes: "Seu nutricionista bloqueou substituições fora da mesma categoria nutricional."
