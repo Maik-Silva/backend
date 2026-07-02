@@ -365,7 +365,6 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       totalPacientes: nutri._count.pacientes
     }));
 
-    // 🌟 CORRIGIDO: Agora inclui os dados internos do Nutricionista através do relacionamento com o Paciente
     const acessosBanco = prisma.logs_acesso ? await prisma.logs_acesso.findMany({
       take: 10,
       orderBy: { data_acesso: 'desc' },
@@ -381,7 +380,6 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       }
     }) : [];
 
-    // Formata os acessos no padrão que o frontend espera (Opção A)
     const acessosRecentes = acessosBanco.map(acesso => ({
       id: acesso.id,
       data_acesso: acesso.data_acesso,
@@ -436,7 +434,6 @@ app.get("/api/admin/usuarios", verificarTokenAdmin, async (req, res) => {
   }
 });
 
-// 🌟 NOVA ROTA ADICIONADA: Fornece a lista de nutricionistas direto para as requisições de relatórios/gerenciamento do front
 app.get("/api/admin/nutricionistas", verificarTokenAdmin, async (req, res) => {
   try {
     const listaNutris = await prisma.nutricionistas.findMany({
@@ -456,6 +453,68 @@ app.get("/api/admin/nutricionistas", verificarTokenAdmin, async (req, res) => {
   } catch (error) {
     console.error("Erro ao listar nutricionistas para o admin:", error);
     res.status(500).json({ error: "Erro ao carregar lista de nutricionistas." });
+  }
+});
+
+// 🗑️ ROTA ADICIONADA: Exclusão Segura de Nutricionista em Cascata
+app.delete("/api/admin/nutricionistas/:id", verificarTokenAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const nutriId = parseInt(id);
+
+    if (isNaN(nutriId)) {
+      return res.status(400).json({ error: "ID do nutricionista inválido." });
+    }
+
+    // 1. Verificar se o nutricionista existe
+    const nutriExiste = await prisma.nutricionistas.findUnique({
+      where: { id: nutriId }
+    });
+
+    if (!nutriExiste) {
+      return res.status(404).json({ error: "Nutricionista não encontrado." });
+    }
+
+    // 2. Executar a deleção em uma transação para garantir consistência
+    await prisma.$transaction(async (tx) => {
+      
+      // Buscar IDs de todos os pacientes vinculados a esse nutricionista
+      const pacientesDoNutri = await tx.pacientes.findMany({
+        where: { nutricionista_id: nutriId },
+        select: { id: true }
+      });
+      
+      const listaIdsPacientes = pacientesDoNutri.map(p => p.id);
+
+      if (listaIdsPacientes.length > 0) {
+        // Deletar os logs de acesso desses pacientes de forma preventiva
+        await tx.logs_acesso.deleteMany({
+          where: { paciente_id: { in: listaIdsPacientes } }
+        });
+
+        // Deletar os pacientes vinculados
+        await tx.pacientes.deleteMany({
+          where: { nutricionista_id: nutriId }
+        });
+      }
+
+      // Finalmente, deletar o nutricionista
+      await tx.nutricionistas.delete({
+        where: { id: nutriId }
+      });
+    });
+
+    // 3. Retornar resposta esperada pelo frontend
+    return res.status(200).json({
+      message: "Nutricionista deletado com sucesso",
+      id: id
+    });
+
+  } catch (error) {
+    console.error("Erro crítico ao excluir nutricionista:", error);
+    return res.status(500).json({ 
+      error: "Falha ao excluir nutricionista - descrição do erro" 
+    });
   }
 });
 
@@ -538,7 +597,7 @@ app.put("/api/nutri/perfil", verificarToken, upload.single('logo'), async (req, 
 });
 
 // ==========================================
-//                 ROTAS DE PACIENTES
+//                  ROTAS DE PACIENTES
 // ==========================================
 
 app.post("/api/pacientes", verificarToken, async (req, res) => {
@@ -657,7 +716,7 @@ app.delete("/api/pacientes/:id", verificarToken, async (req, res) => {
 
 
 // ==========================================
-//         ALIMENTOS E EQUIVALÊNCIAS
+//          ALIMENTOS E EQUIVALÊNCIAS
 // ==========================================
 
 async function buscarAlimento(nomeAlimento) {
@@ -759,7 +818,7 @@ app.get("/api/equivalencia", async (req, res) => {
     }
 
     const mensagemAlerta = gruposDiferentes 
-      ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado foi calculado com sucesso.`
+      ? `⚠️ Atenção! Você está trocando alimentos de categorias diferentes: '${base.Alimento}' (${base.grupo}) por '${sub.Alimento}' (${sub.grupo}). A troca não é a ideal, mas o resultado foi calculated com sucesso.`
       : "";
 
     const payloadUnificado = {
