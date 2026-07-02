@@ -342,6 +342,12 @@ app.get("/api/pacientes/perfil", verificarTokenPaciente, async (req, res) => {
 
 app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
   try {
+    const days = parseInt(req.query.days) || 10;
+    const limit = parseInt(req.query.limit) || 100;
+
+    const dataLimite = new Date();
+    dataLimite.setDate(dataLimite.getDate() - days);
+
     const totalNutris = await prisma.nutricionistas.count();
     const totalPacientes = await prisma.pacientes.count();
     const totalAcessos = prisma.logs_acesso ? await prisma.logs_acesso.count() : 0;
@@ -362,11 +368,17 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
       nome: nutri.nome,
       email: nutri.email,
       limitePacientes: nutri.limite_pacientes || 5,
+      limite_pacientes: nutri.limite_pacientes || 5,
       totalPacientes: nutri._count.pacientes
     }));
 
     const acessosBanco = prisma.logs_acesso ? await prisma.logs_acesso.findMany({
-      take: 10,
+      where: {
+        data_acesso: {
+          gte: dataLimite
+        }
+      },
+      take: limit,
       orderBy: { data_acesso: 'desc' },
       select: {
         id: true,
@@ -383,12 +395,17 @@ app.get("/api/admin/metrics", verificarTokenAdmin, async (req, res) => {
     const acessosRecentes = acessosBanco.map(acesso => ({
       id: acesso.id,
       data_acesso: acesso.data_acesso,
+      date: acesso.data_acesso, 
       patient: acesso.paciente?.nome || "Desconhecido",
-      nutricionista: acesso.paciente?.nutricionista?.nome || "Desconhecido"
+      nutricionista: acesso.paciente?.nutricionista?.nome || "Desconhecido",
+      nutritionist: acesso.paciente?.nutricionista?.nome || "Desconhecido" 
     }));
 
     res.json({
       cards: { totalNutris, totalPacientes, totalAcessos },
+      totalNutris,
+      totalPacientes,
+      totalAcessos,
       nutricionistas: nutricionistasFormatados,
       acessosRecentes
     });
@@ -444,19 +461,34 @@ app.get("/api/admin/nutricionistas", verificarTokenAdmin, async (req, res) => {
         ativo: true, 
         crn: true, 
         sexo: true,
-        plano: true 
+        plano: true,
+        limite_pacientes: true,
+        _count: { select: { pacientes: true } }
       },
       orderBy: { nome: 'asc' }
     });
 
-    res.json({ nutricionistas: listaNutris });
+    const nutricionistasFormatados = listaNutris.map(nutri => ({
+      id: nutri.id,
+      nome: nutri.nome,
+      email: nutri.email,
+      crn: nutri.crn,
+      sexo: nutri.sexo,
+      plano: nutri.plano,
+      limite_pacientes: nutri.limite_pacientes,
+      limitePacientes: nutri.limite_pacientes,
+      totalPacientes: nutri._count.pacientes, 
+      status: nutri.ativo ? "ativo" : "inativo", 
+      ativo: nutri.ativo
+    }));
+
+    res.json({ nutricionistas: nutricionistasFormatados });
   } catch (error) {
     console.error("Erro ao listar nutricionistas para o admin:", error);
     res.status(500).json({ error: "Erro ao carregar lista de nutricionistas." });
   }
 });
 
-// 🗑️ ROTA ADICIONADA: Exclusão Segura de Nutricionista em Cascata
 app.delete("/api/admin/nutricionistas/:id", verificarTokenAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -466,7 +498,6 @@ app.delete("/api/admin/nutricionistas/:id", verificarTokenAdmin, async (req, res
       return res.status(400).json({ error: "ID do nutricionista inválido." });
     }
 
-    // 1. Verificar se o nutricionista existe
     const nutriExiste = await prisma.nutricionistas.findUnique({
       where: { id: nutriId }
     });
@@ -475,10 +506,7 @@ app.delete("/api/admin/nutricionistas/:id", verificarTokenAdmin, async (req, res
       return res.status(404).json({ error: "Nutricionista não encontrado." });
     }
 
-    // 2. Executar a deleção em uma transação para garantir consistência
     await prisma.$transaction(async (tx) => {
-      
-      // Buscar IDs de todos os pacientes vinculados a esse nutricionista
       const pacientesDoNutri = await tx.pacientes.findMany({
         where: { nutricionista_id: nutriId },
         select: { id: true }
@@ -487,24 +515,20 @@ app.delete("/api/admin/nutricionistas/:id", verificarTokenAdmin, async (req, res
       const listaIdsPacientes = pacientesDoNutri.map(p => p.id);
 
       if (listaIdsPacientes.length > 0) {
-        // Deletar os logs de acesso desses pacientes de forma preventiva
         await tx.logs_acesso.deleteMany({
           where: { paciente_id: { in: listaIdsPacientes } }
         });
 
-        // Deletar os pacientes vinculados
         await tx.pacientes.deleteMany({
           where: { nutricionista_id: nutriId }
         });
       }
 
-      // Finalmente, deletar o nutricionista
       await tx.nutricionistas.delete({
         where: { id: nutriId }
       });
     });
 
-    // 3. Retornar resposta esperada pelo frontend
     return res.status(200).json({
       message: "Nutricionista deletado com sucesso",
       id: id
