@@ -1,69 +1,148 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
+}
+
 datasource db {
-  provider = "postgresql" // ou "mysql" / "sqlite" dependendo do seu ambiente
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-generator"
+model banco_equivale {
+  id             Int    @id @default(autoincrement())
+  Alimento       String
+  Quantidade__g_ Int    @map("Quantidade (g)")
+  Energia__Kcal_ Int    @map("Energia (Kcal)")
+  grupo          String
+
+  @@map("banco_equivale")
 }
 
-model Administradores {
-  id         Int      @id @default(autoincrement())
-  nome       String
-  email      String   @unique
-  senha_hash String
+model gorduras {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
 }
 
-model Nutricionistas {
+model leguminosas {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model leite_e_derivados {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+
+  @@map("leite e derivados")
+}
+
+model suplementos {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model proteina {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model frutas {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model sementes {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+}
+
+model cereais_e_tuberculos {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+
+  @@map("cereais e tuberculos")
+}
+
+model verduras__hortali_as_e_derivados {
+  Alimento       String? @db.Text
+  Quantidade__g_ Int?    @map("Quantidade (g)")
+  Energia__Kcal_ Int?    @map("Energia (Kcal)")
+  id             Int     @id @default(autoincrement())
+
+  @@map("verduras, hortaliças e derivados")
+}
+
+model nutricionistas {
   id                         Int         @id @default(autoincrement())
   nome                       String
   email                      String      @unique
   senha_hash                 String
   crn                        String?
-  sexo                       String // "Feminino" ou "Masculino"
-  plano                      String      @default("free") // ex: "free", "premium"
-  ativo                      Boolean     @default(true)
-  limite_pacientes           Int         @default(5)
   especialidade              String?
+  sexo                       String?     
   whatsapp                   String?
   instagram                  String?
-  logo_url                   String?
+  logo_url                   String?     @db.Text
+  plano                      String      @default("free")
+  ativo                      Boolean     @default(true)
+  limite_pacientes           Int         @default(5)
+  created_at                 DateTime    @default(now())
+  updated_at                 DateTime    @updatedAt
   bloquear_grupos_diferentes Boolean     @default(false)
-  
-  // Relacionamentos
-  pacientes                  Pacientes[]
+  pacientes                  pacientes[]
+
+  @@map("nutricionistas")
 }
 
-model Pacientes {
+model pacientes {
   id               Int            @id @default(autoincrement())
   nutricionista_id Int
   nome             String
   email            String         @unique
-  telefone         String // Salvo apenas com números (\D removidos)
+  telefone         String
   senha_hash       String
-  data_nascimento  DateTime
-  sexo             String // "Feminino" ou "Masculino"
-  observacoes      String?
+  data_nascimento  DateTime?
+  sexo             String?        
+  observacoes      String?        @db.Text
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+  nutricionista    nutricionistas @relation(fields: [nutricionista_id], references: [id])
+  logs_acesso      logs_acesso[]
 
-  // Relacionamentos
-  nutricionista    Nutricionistas @relation(fields: [nutricionista_id], references: [id], onDelete: Cascade)
-  logs_acesso      Logs_acesso[]
+  @@map("pacientes")
 }
 
-model Logs_acesso {
+model administradores {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  email      String   @unique
+  senha_hash String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("administradores")
+}
+
+model logs_acesso {
   id          Int       @id @default(autoincrement())
   paciente_id Int
   data_acesso DateTime  @default(now())
+  paciente    pacientes @relation(fields: [paciente_id], references: [id], onDelete: Cascade)
 
-  // Relacionamentos
-  paciente    Pacientes @relation(fields: [paciente_id], references: [id], onDelete: Cascade)
-}
-
-model Banco_equivale {
-  id              Int    @id @default(autoincrement())
-  Alimento        String // Buscado via .contains()
-  Energia__Kcal_  Float  // Mapeado como float/decimal para cálculos calóricos
-  grupo           String // Usado na validação de categorias iguais/diferentes
-
-  @@map("banco_equivale") // Garante que respeite a tabela unificada em minúsculo se necessário
+  @@map("logs_acesso")
 }
